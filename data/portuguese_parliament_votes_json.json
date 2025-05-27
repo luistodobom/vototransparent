@@ -1,0 +1,388 @@
+{
+  "session_info": {
+    "date": "2025-01-17",
+    "legislature": "XVI",
+    "session": "1ª sessão legislativa",
+    "document_title": "VOTAÇÕES EFETUADAS EM 2025-01-17"
+  },
+  "party_composition": {
+    "PSD": 78,
+    "PS": 78,
+    "CH": 50,
+    "IL": 8,
+    "BE": 5,
+    "PCP": 4,
+    "L": 4,
+    "CDS-PP": 2,
+    "PAN": 1
+  },
+  "votes": [
+    {
+      "id": "Projeto de Voto n.º 518/XVI/1.ª",
+      "title": "De pesar pelo falecimento de Pedro Sobral",
+      "type": "Deliberação",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheProjetoVoto.aspx?BID=177998",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Proposta de Lei n.º 39/XVI/1.ª (ALRAM)",
+      "title": "Procede à segunda alteração da Lei Eleitoral para a Assembleia Legislativa da Região Autónoma da Madeira",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=155179",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Requerimento oral PSD - Proposta de Lei n.º 39/XVI/1.ª",
+      "title": "Solicitando a dispensa de redação final e do prazo para apresentação de reclamações",
+      "type": "Deliberação",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=155179",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Requerimento PSD - Proposta de Lei n.º 15/XVI/1.ª (GOV)",
+      "title": "Solicitando a baixa à Comissão de Orçamento, Finanças e Administração Pública por 30 dias",
+      "type": "Deliberação",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=154955",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Proposta de Lei n.º 41/XVI/1.ª (ALRAA)",
+      "title": "Primeira alteração ao Decreto-Lei n.º 41/2015 - subsídio social de mobilidade",
+      "type": "Votação na Generalidade, na Especialidade e Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=155181",
+      "result": "Aprovada por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 416/XVI/1.ª",
+      "title": "Aprova a reposição de freguesias agregadas pela Lei n.º 11-A/2013",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157896",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 416/XVI/1.ª",
+      "title": "Aprova a reposição de freguesias agregadas pela Lei n.º 11-A/2013",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157896",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Proposta de Lei n.º 28/XVI/1.ª (GOV)",
+      "title": "Aprova o Estatuto da Pessoa Idosa",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=154967",
+      "result": "Aprovada",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 404/XVI/1.ª (PCP)",
+      "title": "Carta dos direitos fundamentais dos reformados, pensionistas e idosos",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157884",
+      "result": "Rejeitado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 78, "abstencao": 0},
+        "PS": {"favor": 0, "contra": 78, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 0, "contra": 0, "abstencao": 8},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 406/XVI/1.ª (PS)",
+      "title": "Estabelece o regime de apoio à autonomia, saúde e segurança das pessoas idosas",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157886",
+      "result": "Rejeitado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 78, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 411/XVI/1.ª (L)",
+      "title": "Admite a acumulação da prestação social para a inclusão com a pensão social de velhice",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157891",
+      "result": "Rejeitado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 78, "abstencao": 0},
+        "PS": {"favor": 0, "contra": 78, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 0, "contra": 8, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 501/XVI/1.ª (PAN)",
+      "title": "Pela aprovação de uma Estratégia Europeia para as Pessoas Idosas",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157981",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 0, "abstencao": 78},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 511/XVI/1.ª (CDS-PP)",
+      "title": "Recomenda ao Governo o desenvolvimento de uma Estratégia Nacional para o Envelhecimento Ativo",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157991",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 0, "abstencao": 78},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 0, "contra": 0, "abstencao": 8},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 512/XVI/1.ª (BE)",
+      "title": "Implementação de um Plano de Desinstitucionalização das Pessoas Idosas",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157992",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 0, "abstencao": 78},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 515/XVI/1.ª (L)",
+      "title": "Recomenda o desenvolvimento de esforços para a adoção de uma Convenção Internacional sobre os Direitos das Pessoas Mais Velhas",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157995",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 0, "abstencao": 78},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 516/XVI/1.ª (CH)",
+      "title": "Recomenda ao Governo que garanta condições de vida dignas físicas e emocionais à população sénior",
+      "type": "Votação na Generalidade",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=157996",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 0, "contra": 0, "abstencao": 78},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 367/XVI/1.ª (CDS-PP)",
+      "title": "Recomenda ao Governo que estenda as medidas de Ação Social Escolar aos alunos carenciados que frequentam o Ensino Particular e Cooperativo",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=156847",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 50, "abstencao": 0},
+        "IL": {"favor": 0, "contra": 8, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 0, "contra": 4, "abstencao": 0},
+        "L": {"favor": 0, "contra": 4, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    },
+    {
+      "id": "Projeto de Resolução n.º 232/XVI/1.ª (L)",
+      "title": "Recomenda a publicação da Portaria que fixa a tabela de custos para a publicação das decisões autárquicas",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=155712",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 288/XVI/1.ª (PS)",
+      "title": "Elevação da povoação de Boliqueime à categoria de Vila",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=156768",
+      "result": "Aprovado por unanimidade",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 50, "contra": 0, "abstencao": 0},
+        "IL": {"favor": 8, "contra": 0, "abstencao": 0},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 2, "contra": 0, "abstencao": 0},
+        "PAN": {"favor": 1, "contra": 0, "abstencao": 0}
+      }
+    },
+    {
+      "id": "Projeto de Lei n.º 300/XVI/1.ª (PCP)",
+      "title": "Reforça medidas urgentes de apoio às populações afetadas pelos incêndios ocorridos em setembro de 2024",
+      "type": "Votação Final Global",
+      "url": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=156780",
+      "result": "Aprovado",
+      "voting_breakdown": {
+        "PSD": {"favor": 78, "contra": 0, "abstencao": 0},
+        "PS": {"favor": 78, "contra": 0, "abstencao": 0},
+        "CH": {"favor": 0, "contra": 0, "abstencao": 50},
+        "IL": {"favor": 0, "contra": 0, "abstencao": 8},
+        "BE": {"favor": 5, "contra": 0, "abstencao": 0},
+        "PCP": {"favor": 4, "contra": 0, "abstencao": 0},
+        "L": {"favor": 4, "contra": 0, "abstencao": 0},
+        "CDS-PP": {"favor": 0, "contra": 0, "abstencao": 2},
+        "PAN": {"favor": 0, "contra": 0, "abstencao": 1}
+      }
+    }
+  ],
+  "summary": {
+    "total_votes": 20,
+    "unanimous_approvals": 6,
+    "rejections": 3,
+    "regular_approvals": 11,
+    "total_mps": 230
+  }
+}
