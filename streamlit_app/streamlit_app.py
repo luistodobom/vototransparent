@@ -8,9 +8,104 @@ import re # For extracting BID
 st.set_page_config(
     page_title="VotoTransparente PT",
     page_icon="🇵🇹",
-    layout="wide",
+    layout="wide", # Keep wide for now, can adjust with CSS
     initial_sidebar_state="collapsed"
 )
+
+# --- Custom CSS for styling ---
+# Injected CSS for centering and cleaner look
+st.markdown("""
+<style>
+    /* General body styling (optional, Streamlit handles most) */
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    }
+
+    /* Main container for centering content */
+    .main .block-container {
+        max-width: 900px; /* Adjust as needed */
+        padding-left: 2rem;
+        padding-right: 2rem;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        margin: auto; /* Centers the block-container */
+    }
+
+    /* Center align text for specific elements if needed */
+    .stApp > header { /* Targets the Streamlit header */
+        display: none; /* Hide default Streamlit header if we are making a custom one */
+    }
+
+    /* Custom title styling */
+    .custom-title {
+        text-align: center;
+        font-size: 2.5em; /* Larger title */
+        font-weight: bold;
+        margin-bottom: 0.5em;
+        color: #333; /* Darker text color */
+    }
+
+    .custom-subtitle {
+        text-align: center;
+        font-size: 1.2em;
+        margin-bottom: 2em;
+        color: #555; /* Slightly lighter subtitle */
+    }
+
+    /* Search input styling */
+    div[data-testid="stTextInput"] > div > div > input {
+        border-radius: 20px; /* Rounded corners for search bar */
+        border: 1px solid #ccc;
+        padding: 0.75em 1em;
+    }
+    div[data-testid="stTextInput"] > label {
+        display: none; /* Hide the label above search input if placeholder is enough */
+    }
+
+
+    /* Button styling for search results */
+    div[data-testid="stButton"] > button {
+        border-radius: 8px;
+        border: 1px solid #007bff; /* Example primary color */
+        background-color: #007bff;
+        color: white;
+        padding: 0.5em 1em;
+        width: 100%; /* Make button take full width of its container */
+        transition: background-color 0.3s ease;
+    }
+    div[data-testid="stButton"] > button:hover {
+        background-color: #0056b3;
+        border-color: #0056b3;
+    }
+
+    /* Styling for containers holding search results */
+    div[data-testid="stVerticalBlock"] div[data-testid="stExpander"] {
+        border: none; /* Remove border from expanders if used */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Subtle shadow */
+        border-radius: 8px;
+        margin-bottom: 1em;
+    }
+    div[data-testid="stVerticalBlock"] div[data-testid="stContainer"] {
+         border: 1px solid #e0e0e0;
+         border-radius: 8px;
+         padding: 1em;
+         margin-bottom: 1em;
+         box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+
+    /* Footer styling */
+    .footer {
+        text-align: center;
+        margin-top: 3em;
+        padding-top: 1em;
+        border-top: 1px solid #eee;
+        font-size: 0.9em;
+        color: #777;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 # --- Data Loading ---
 @st.cache_data
@@ -233,16 +328,21 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path
 data_df = load_data()
 
 # --- Homepage ---
-st.title("🇵🇹 VotoTransparente: O Seu Guia para as Votações Parlamentares")
-st.markdown("Explore como os partidos políticos votam na Assembleia da República Portuguesa.")
-st.markdown("---")
+# Use markdown for custom styled title and subtitle
+st.markdown("<div class='custom-title'>🇵🇹 VotoTransparente</div>", unsafe_allow_html=True)
+st.markdown("<div class='custom-subtitle'>O Seu Guia para as Votações Parlamentares na Assembleia da República Portuguesa.</div>", unsafe_allow_html=True)
+# st.title(\"🇵🇹 VotoTransparente: O Seu Guia para as Votações Parlamentares\") # Original title
+# st.markdown(\"Explore como os partidos políticos votam na Assembleia da República Portuguesa.\") # Original subtitle
+# st.markdown(\"---\") # Remove this divider or style it via CSS if needed
 
 if not data_df.empty:
     # --- Search Functionality ---
-    st.header("🔍 Pesquisar Votações")
+    # st.header(\"🔍 Pesquisar Votações\") # Original header, can be removed for cleaner look
     search_query = st.text_input(
-        "Procure por título, número da iniciativa ou palavras-chave na descrição:",
-        placeholder="Ex: Orçamento do Estado, PL/123/XVI/1, habitação"
+        "", # Label removed, placeholder is more prominent
+        placeholder="Pesquisar por palavra-chave...", # Simpler placeholder
+        # "Procure por título, número da iniciativa ou palavras-chave na descrição:", # Original label
+        # placeholder="Ex: Orçamento do Estado, PL/123/XVI/1, habitação" # Original placeholder
     )
 
     if search_query:
@@ -264,30 +364,42 @@ if not data_df.empty:
         ]
 
         if not results.empty:
-            st.subheader(f"Resultados da pesquisa para \"{search_query}\":")
+            st.markdown(f"**Resultados da pesquisa para \"{search_query}\":**") # Simpler subheader
             for _, row in results.iterrows():
-                with st.container(border=True):
-                    st.markdown(f"#### {row['full_title']}")
-                    if pd.notna(row['issue_identifier']):
-                        st.caption(f"Identificador: {row['issue_identifier']}")
-                    if pd.notna(row['vote_outcome']):
-                        st.caption(f"Resultado: {row['vote_outcome']}")
-
-                    # Use button with session state for navigation
-                    if st.button(f"Ver detalhes da votação 🗳️", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                        st.session_state.selected_issue_identifier = row['issue_identifier']
-                        st.switch_page("pages/2_Topic_Details.py")
+                # Use a simpler container, the CSS will style it
+                with st.container(): # Removed border=True, CSS handles it
+                    col1, col2 = st.columns([3, 1]) # Column for title and button
+                    with col1:
+                        st.markdown(f"**{row['full_title']}**")
+                        if pd.notna(row['issue_identifier']):
+                            st.caption(f"ID: {row['issue_identifier']}")
+                        if pd.notna(row['vote_outcome']):
+                             st.caption(f"Resultado: {row['vote_outcome']}")
+                    with col2:
+                         # Button to navigate, styled by CSS
+                        if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
+                            st.session_state.selected_issue_identifier = row['issue_identifier']
+                            st.switch_page("pages/2_Topic_Details.py")
         else:
-            st.info(f"Nenhuma votação encontrada para \"{search_query}\". Tente termos diferentes ou navegue por todos os tópicos.")
+            st.info(f"Nenhuma votação encontrada para \"{search_query}\".") # Simpler message
     
-    st.markdown("---")
-    st.header("📖 Navegar por Todas as Votações")
-    st.markdown("Veja uma lista completa de todas as votações processadas.")
-    st.page_link("pages/1_Browse_Topics.py", label="Ver Todos os Tópicos de Votação", icon="📜")
+    # st.markdown(\"---\") # Remove divider
+    # st.header(\"📖 Navegar por Todas as Votações\") # Original header
+    # st.markdown(\"Veja uma lista completa de todas as votações processadas.\") # Original markdown
+    
+    # Centered "Browse All Votes" link/button
+    st.markdown("<br>", unsafe_allow_html=True) # Add some space
+    cols_browse = st.columns([1,2,1]) # Use columns to center the button/link
+    with cols_browse[1]:
+        if st.button("Navegar por Todas as Votações", use_container_width=True, key="browse_all_main"):
+             st.switch_page("pages/1_Browse_Topics.py")
+    # st.page_link(\"pages/1_Browse_Topics.py\", label=\"Ver Todos os Tópicos de Votação\", icon=\"📜\") # Original page_link
 
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
-st.markdown("---")
-st.markdown("Desenvolvido com ❤️ por [Luís Trindade Bento]") # Placeholder for actual name/org
-st.markdown("Dados extraídos de documentos oficiais da Assembleia da República e processados.")
+# --- Footer ---
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luís Todo Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados.</div>", unsafe_allow_html=True)
+# st.markdown(\"---\")
+# st.markdown(\"Desenvolvido com ❤️ por [Luís Todo Bom]\") # Placeholder for actual name/org
+# st.markdown(\"Dados extraídos de documentos oficiais da Assembleia da República e processados.\")
