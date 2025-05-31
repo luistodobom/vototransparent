@@ -56,6 +56,8 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path f
             summary_analysis = str(row.get('proposal_summary_analysis', '')) if pd.notna(row.get('proposal_summary_analysis')) else ''
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
+            session_pdf_url_val = row.get('session_pdf_url', '')
+
 
             voting_breakdown_json = row.get('voting_details_json')
             current_proposal_overall_favor = 0
@@ -137,6 +139,7 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path f
                         'proposal_summary_analysis': summary_analysis,
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
+                        'session_pdf_url': session_pdf_url_val,
                     })
             else:
                 all_vote_details.append({
@@ -148,6 +151,7 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path f
                     'proposal_summary_analysis': summary_analysis,
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
+                    'session_pdf_url': session_pdf_url_val,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
@@ -155,7 +159,8 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path f
         expected_cols = [
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
-            'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial'
+            'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
+            'session_pdf_url'
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -163,10 +168,11 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path f
                 elif col == 'is_unanimous': df[col] = False
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
-                else: df[col] = 'N/A' if col != 'hyperlink' else ''
+                else: df[col] = 'N/A' if col not in ['hyperlink', 'session_pdf_url'] else ''
         
         for col_fill_na in ['full_title', 'description', 'vote_outcome', 'issue_type', 'party']: df[col_fill_na] = df[col_fill_na].fillna('N/A')
         df['hyperlink'] = df['hyperlink'].fillna('')
+        df['session_pdf_url'] = df['session_pdf_url'].fillna('')
         df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
         df['authors_json_str'] = df['authors_json_str'].fillna('[]')
         for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
@@ -281,6 +287,9 @@ if issue_id_param and not data_df.empty:
         if pd.notna(topic_info['hyperlink']) and topic_info['hyperlink'].strip():
             st.markdown(f"🔗 **Link para o documento/iniciativa:** [Aceder aqui]({topic_info['hyperlink']})", unsafe_allow_html=True)
 
+        if pd.notna(topic_info['session_pdf_url']) and topic_info['session_pdf_url'].strip():
+            st.markdown(f"📄 **Link para o PDF da sessão de votação:** [Aceder aqui]({topic_info['session_pdf_url']})", unsafe_allow_html=True)
+
         st.markdown("---")
         st.subheader("📊 Votação por Partido Político")
         
@@ -334,30 +343,6 @@ if issue_id_param and not data_df.empty:
             else:
                  st.markdown("Processando dados de votação por partido...")
 
-
-            # Option 2: Detailed metric display (like before, but using 'votes_not_voted')
-            st.markdown("---")
-            st.subheader("Detalhe dos Votos por Partido:")
-            for _, party_vote_row in sorted_parties_df.iterrows():
-                party_name = party_vote_row['party']
-                if party_name == 'N/A' and len(sorted_parties_df) > 1: continue
-
-                favor = int(party_vote_row.get('votes_favor', 0))
-                against = int(party_vote_row.get('votes_against', 0))
-                abstention = int(party_vote_row.get('votes_abstention', 0))
-                not_voted = int(party_vote_row.get('votes_not_voted', 0))
-                
-                with st.container(border=True):
-                    st.markdown(f"#### {party_name}")
-                    cols = st.columns(4)
-                    with cols[0]:
-                        st.metric(label="👍 A Favor", value=favor)
-                    with cols[1]:
-                        st.metric(label="👎 Contra", value=against)
-                    with cols[2]:
-                        st.metric(label="🤷 Abstenções", value=abstention)
-                    with cols[3]:
-                        st.metric(label="👤 Ausentes/Não Votaram", value=not_voted, help="Deputados ausentes ou que não exerceram o seu direito de voto.")
         else:
             st.markdown("Não há dados de votação por partido para exibir.")
 
