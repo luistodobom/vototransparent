@@ -371,15 +371,34 @@ if not data_df.empty:
                     col1, col2 = st.columns([3, 1]) # Column for title and button
                     with col1:
                         st.markdown(f"**{row['full_title']}**")
+                        if pd.notna(row['description']):
+                            st.markdown(f"_{row['description']}_") # Display general description
                         if pd.notna(row['issue_identifier']):
                             st.caption(f"ID: {row['issue_identifier']}")
                         if pd.notna(row['vote_outcome']):
                              st.caption(f"Resultado: {row['vote_outcome']}")
+
                     with col2:
                          # Button to navigate, styled by CSS
                         if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
                             st.session_state.selected_issue_identifier = row['issue_identifier']
                             st.switch_page("pages/2_Topic_Details.py")
+
+                    # Expander for other descriptions
+                    with st.expander("Mais detalhes da proposta"):
+                        if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
+                            st.markdown("**Análise:**")
+                            st.markdown(row['proposal_summary_analysis'])
+                        if pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip():
+                            st.markdown("**Impacto Fiscal:**")
+                            st.markdown(row['proposal_summary_fiscal_impact'])
+                        if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
+                            st.markdown("**Versão Coloquial:**")
+                            st.markdown(row['proposal_summary_colloquial'])
+                        if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or \
+                                (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or \
+                                (pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip())):
+                            st.markdown("Não há detalhes adicionais disponíveis.")
         else:
             st.info(f"Nenhuma votação encontrada para \"{search_query}\".") # Simpler message
     

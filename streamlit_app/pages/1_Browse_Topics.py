@@ -206,6 +206,8 @@ if not data_df.empty:
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     st.markdown(f"#### {topic_row['full_title']}")
+                    if pd.notna(topic_row['description']):
+                        st.markdown(f"_{topic_row['description']}_") # Display general description
                     if pd.notna(topic_row['issue_identifier']):
                         st.caption(f"Identificador: {topic_row['issue_identifier']}")
                     if pd.notna(topic_row['issue_type']):
@@ -215,6 +217,21 @@ if not data_df.empty:
                         st.session_state.selected_issue_identifier = topic_row['issue_identifier']
                         st.switch_page("pages/2_Topic_Details.py")
                 st.markdown(f"**Resultado da Votação:** {topic_row.get('vote_outcome', 'N/A')}")
+                # Expander for other descriptions
+                with st.expander("Mais detalhes da proposta"):
+                    if pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip():
+                        st.markdown("**Análise:**")
+                        st.markdown(topic_row['proposal_summary_analysis'])
+                    if pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip():
+                        st.markdown("**Impacto Fiscal:**")
+                        st.markdown(topic_row['proposal_summary_fiscal_impact'])
+                    if pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip():
+                        st.markdown("**Versão Coloquial:**")
+                        st.markdown(topic_row['proposal_summary_colloquial'])
+                    if not ((pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip()) or 
+                            (pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip()) or 
+                            (pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip())):
+                        st.markdown("Não há detalhes adicionais disponíveis.")
 
     else:
         st.info("Não foram encontradas votações para listar.")
