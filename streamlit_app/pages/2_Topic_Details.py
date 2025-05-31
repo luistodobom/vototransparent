@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import os
-import json # Added for JSON processing
+import json
+import re
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -11,121 +12,182 @@ st.set_page_config(
 )
 
 # --- Data Loading ---
+# [[REPLACE THE EXISTING load_data FUNCTION WITH THE ONE DEFINED ABOVE]]
+# The load_data function is identical to the one in streamlit_app.py
+# Path adjustment for pages is handled by the default path.
 @st.cache_data
-def load_data(json_path="../data/portuguese_parliament_votes_json.json"): # Adjusted path for pages folder
-    # Corrected path logic for files inside 'pages' directory, assuming json is at project root
-    final_json_path = json_path 
-    if not os.path.isabs(json_path) and os.path.basename(os.getcwd()) == "pages":
-        final_json_path = os.path.join("..", json_path)
-    elif not os.path.exists(json_path) and os.path.exists(os.path.join("..", json_path)) and "pages" in os.getcwd(): # Fallback for pages
-        final_json_path = os.path.join("..", json_path)
-
-    if not os.path.exists(final_json_path):
-        st.error(f"Error: The data file '{os.path.abspath(final_json_path)}' was not found. "
-                 f"Please ensure it's generated (e.g., by an extraction script).")
-        return pd.DataFrame()
-    try:
-        with open(final_json_path, 'r', encoding='utf-8') as f:
-            raw_data = json.load(f)
-
-        if 'votes' not in raw_data or 'party_composition' not in raw_data:
-            st.error("Error: JSON data is missing essential 'votes' or 'party_composition' keys.")
+def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path for pages
+    final_csv_path = csv_path
+    # Path adjustment logic (same considerations as in 1_Browse_Topics.py)
+    if not os.path.exists(final_csv_path):
+        alternative_path = os.path.join("..", csv_path) 
+        if os.path.exists(alternative_path):
+            final_csv_path = alternative_path
+        else:
+            st.error(f"Error: The data file '{os.path.abspath(final_csv_path)}' (and alternative '{os.path.abspath(alternative_path)}') was not found. "
+                     f"Working directory: '{os.getcwd()}'. Please ensure it's generated.")
             return pd.DataFrame()
 
-        party_composition_data = raw_data.get('party_composition', {})
+    try:
+        raw_df = pd.read_csv(final_csv_path)
         all_vote_details = []
 
-        for vote_event in raw_data.get('votes', []):
-            if not isinstance(vote_event, dict) or not vote_event.get('id'):
-                continue
+        def extract_bid(url):
+            if pd.isna(url) or url == "":
+                return None
+            match = re.search(r'BID=(\d+)', url)
+            if match:
+                return match.group(1)
+            match_alt = re.search(r'Detalhe(?:Iniciativa|ProjetoVoto)\.aspx\?BID=(\d+)', str(url))
+            if match_alt:
+                return match_alt.group(1)
+            return None
 
-            issue_id = vote_event.get('id')
-            title = vote_event.get('title', 'Título não disponível.')
-            vote_type = vote_event.get('type', 'N/A')
-            url = vote_event.get('url', '')
-            outcome = vote_event.get('result', 'N/A')
-            is_unanimous_vote = "unanimidade" in outcome.lower()
-            description_text = 'Descrição não disponível.'
+        for index, row in raw_df.iterrows():
+            issue_id_str = extract_bid(row.get('proposal_gov_link'))
+            if issue_id_str is None:
+                issue_id_str = row.get('proposal_name_from_session', f"fallback_id_{index}")
+            
+            title = row.get('proposal_name_from_session', 'Título não disponível.')
+            description_text = row.get('proposal_summary_general', 'Descrição não disponível.')
+            hyperlink_url = row.get('proposal_document_url', row.get('proposal_gov_link', ''))
+            issue_type = row.get('proposal_document_type', 'N/A')
+            authors_json_str = str(row.get('proposal_authors_json', '[]')) if pd.notna(row.get('proposal_authors_json')) else '[]'
+            summary_analysis = str(row.get('proposal_summary_analysis', '')) if pd.notna(row.get('proposal_summary_analysis')) else ''
+            summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
+            summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
 
+            voting_breakdown_json = row.get('voting_details_json')
+            current_proposal_overall_favor = 0
+            current_proposal_overall_against = 0
+            current_proposal_overall_abstention = 0
+            proposal_party_votes_list = []
+            parsed_voting_breakdown = {}
+            valid_breakdown_found = False
 
-            voting_breakdown = vote_event.get('voting_breakdown')
+            if pd.notna(voting_breakdown_json) and isinstance(voting_breakdown_json, str) and voting_breakdown_json.strip():
+                try:
+                    parsed_voting_breakdown = json.loads(voting_breakdown_json)
+                    if isinstance(parsed_voting_breakdown, dict) and parsed_voting_breakdown:
+                        valid_breakdown_found = True
+                except json.JSONDecodeError:
+                    parsed_voting_breakdown = {}
 
-            if isinstance(voting_breakdown, dict) and voting_breakdown:
-                for party_name, party_votes_data in voting_breakdown.items():
-                    favor, against, abstention = 0, 0, 0
+            if valid_breakdown_found:
+                for party_name, party_votes_data in parsed_voting_breakdown.items():
                     if isinstance(party_votes_data, dict):
-                        favor = party_votes_data.get('favor', party_votes_data.get('votes_favor', 0))
-                        against = party_votes_data.get('against', party_votes_data.get('votes_against', 0))
-                        abstention = party_votes_data.get('abstention', party_votes_data.get('votes_abstention', 0))
-                    
-                    row = {
-                        'issue_identifier': issue_id, 'full_title': title, 'description': description_text,
-                        'hyperlink': url, 'vote_outcome': outcome, 'is_unanimous': is_unanimous_vote,
-                        'issue_type': vote_type, 'party': party_name,
-                        'party_total_mps': party_composition_data.get(party_name, 0),
-                        'votes_favor': favor, 'votes_against': against, 'votes_abstention': abstention
-                    }
-                    all_vote_details.append(row)
-            else:
-                if not party_composition_data:
-                     all_vote_details.append({
-                        'issue_identifier': issue_id, 'full_title': title, 'description': description_text,
-                        'hyperlink': url, 'vote_outcome': outcome, 'is_unanimous': is_unanimous_vote,
-                        'issue_type': vote_type, 'party': 'N/A', 'party_total_mps': 0,
-                        'votes_favor': 0, 'votes_against': 0, 'votes_abstention': 0
-                    })
-                else:
-                    for party_name in party_composition_data.keys():
-                        all_vote_details.append({
-                            'issue_identifier': issue_id, 'full_title': title, 'description': description_text,
-                            'hyperlink': url, 'vote_outcome': outcome, 'is_unanimous': is_unanimous_vote,
-                            'issue_type': vote_type, 'party': party_name,
-                            'party_total_mps': party_composition_data.get(party_name, 0),
-                            'votes_favor': 0, 'votes_against': 0, 'votes_abstention': 0
-                        })
-        
-        if not all_vote_details:
-            st.info("No vote data could be processed from the JSON file.")
-            return pd.DataFrame()
+                        raw_favor_val = party_votes_data.get('Favor', party_votes_data.get('votes_favor', 0))
+                        favor_numeric = pd.to_numeric(raw_favor_val, errors='coerce')
+                        favor = 0 if pd.isna(favor_numeric) else int(favor_numeric)
 
+                        raw_against_val = party_votes_data.get('Contra', party_votes_data.get('votes_against', 0))
+                        against_numeric = pd.to_numeric(raw_against_val, errors='coerce')
+                        against = 0 if pd.isna(against_numeric) else int(against_numeric)
+
+                        raw_abstention_val = party_votes_data.get('Abstenção', party_votes_data.get('Abstencao', party_votes_data.get('votes_abstention', 0)))
+                        abstention_numeric = pd.to_numeric(raw_abstention_val, errors='coerce')
+                        abstention = 0 if pd.isna(abstention_numeric) else int(abstention_numeric)
+                        
+                        raw_not_voted_val = party_votes_data.get('Não Votaram', party_votes_data.get('Nao Votaram', 0))
+                        not_voted_numeric = pd.to_numeric(raw_not_voted_val, errors='coerce')
+                        not_voted = 0 if pd.isna(not_voted_numeric) else int(not_voted_numeric)
+
+                        current_proposal_overall_favor += favor
+                        current_proposal_overall_against += against
+                        current_proposal_overall_abstention += abstention
+                        proposal_party_votes_list.append({
+                            'party': party_name, 'votes_favor': favor, 'votes_against': against,
+                            'votes_abstention': abstention, 'votes_not_voted': not_voted,
+                        })
+            
+            vote_outcome_str = "Dados de votação não disponíveis"
+            is_unanimous_bool = False
+            if proposal_party_votes_list:
+                if current_proposal_overall_favor > 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
+                    vote_outcome_str = "Aprovado por unanimidade"; is_unanimous_bool = True
+                elif current_proposal_overall_against > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_abstention == 0:
+                    vote_outcome_str = "Rejeitado por unanimidade"; is_unanimous_bool = True
+                elif current_proposal_overall_favor > current_proposal_overall_against: vote_outcome_str = "Aprovado"
+                elif current_proposal_overall_against > current_proposal_overall_favor: vote_outcome_str = "Rejeitado"
+                elif current_proposal_overall_favor == current_proposal_overall_against and current_proposal_overall_favor > 0: vote_outcome_str = "Empate"
+                elif current_proposal_overall_abstention > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_against == 0:
+                    all_abstained = all(p_vote['votes_favor'] == 0 and p_vote['votes_against'] == 0 for p_vote in proposal_party_votes_list)
+                    if all_abstained: vote_outcome_str = "Abstenção Geral"; is_unanimous_bool = True # Unanimous abstention
+                    else: vote_outcome_str = "Resultado misto" # Should not happen
+                else:
+                    if current_proposal_overall_favor == 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
+                        total_non_voters = sum(pvd.get('votes_not_voted',0) for pvd in proposal_party_votes_list)
+                        if total_non_voters > 0 and not any(pvd.get('votes_favor',0) > 0 or pvd.get('votes_against',0) > 0 or pvd.get('votes_abstention',0) > 0 for pvd in proposal_party_votes_list):
+                             vote_outcome_str = "Ausência de votação registada"
+                        else:
+                             vote_outcome_str = "Sem votos expressos (Favor, Contra, Abstenção)"
+                    else: vote_outcome_str = "Resultado misto"
+            elif not valid_breakdown_found and pd.notna(voting_breakdown_json) and voting_breakdown_json.strip():
+                 vote_outcome_str = "Dados de votação malformados"
+
+            if proposal_party_votes_list:
+                for p_vote in proposal_party_votes_list:
+                    all_vote_details.append({
+                        'issue_identifier': issue_id_str, 'full_title': title, 'description': description_text,
+                        'hyperlink': hyperlink_url, 'vote_outcome': vote_outcome_str, 'is_unanimous': is_unanimous_bool,
+                        'issue_type': issue_type, 'party': p_vote['party'],
+                        'votes_favor': p_vote['votes_favor'], 'votes_against': p_vote['votes_against'],
+                        'votes_abstention': p_vote['votes_abstention'], 'votes_not_voted': p_vote['votes_not_voted'],
+                        'authors_json_str': authors_json_str,
+                        'proposal_summary_analysis': summary_analysis,
+                        'proposal_summary_fiscal_impact': summary_fiscal,
+                        'proposal_summary_colloquial': summary_colloquial,
+                    })
+            else:
+                all_vote_details.append({
+                    'issue_identifier': issue_id_str, 'full_title': title, 'description': description_text,
+                    'hyperlink': hyperlink_url, 'vote_outcome': vote_outcome_str, 'is_unanimous': is_unanimous_bool,
+                    'issue_type': issue_type, 'party': 'N/A',
+                    'votes_favor': 0, 'votes_against': 0, 'votes_abstention': 0, 'votes_not_voted': 0,
+                    'authors_json_str': authors_json_str,
+                    'proposal_summary_analysis': summary_analysis,
+                    'proposal_summary_fiscal_impact': summary_fiscal,
+                    'proposal_summary_colloquial': summary_colloquial,
+                })
+        
+        if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
         df = pd.DataFrame(all_vote_details)
         expected_cols = [
-            'issue_identifier', 'full_title', 'description', 'hyperlink',
-            'vote_outcome', 'is_unanimous', 'issue_type', 'party', 'party_total_mps',
-            'votes_favor', 'votes_against', 'votes_abstention'
+            'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
+            'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
+            'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial'
         ]
         for col in expected_cols:
             if col not in df.columns:
-                if col in ['votes_favor', 'votes_against', 'votes_abstention', 'party_total_mps']: df[col] = 0
+                if col in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']: df[col] = 0
                 elif col == 'is_unanimous': df[col] = False
+                elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
+                    df[col] = '' if col != 'authors_json_str' else '[]'
                 else: df[col] = 'N/A' if col != 'hyperlink' else ''
-
-        df['full_title'] = df['full_title'].fillna('Título não disponível.')
-        df['description'] = df['description'].fillna('Descrição não disponível.')
+        
+        for col_fill_na in ['full_title', 'description', 'vote_outcome', 'issue_type', 'party']: df[col_fill_na] = df[col_fill_na].fillna('N/A')
         df['hyperlink'] = df['hyperlink'].fillna('')
-        for col in ['party_total_mps', 'votes_favor', 'votes_against', 'votes_abstention']:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int) # Corrected errors='fillna' to errors='coerce'
+        df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
+        df['authors_json_str'] = df['authors_json_str'].fillna('[]')
+        for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
+            df[col_fill_empty_str] = df[col_fill_empty_str].fillna('')
+        for col_to_int in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
+            df[col_to_int] = pd.to_numeric(df[col_to_int], errors='coerce').fillna(0).astype(int)
+        df['issue_identifier'] = df['issue_identifier'].astype(str)
         return df
+    except FileNotFoundError: st.error(f"Error: Data file '{os.path.abspath(final_csv_path)}' not found."); return pd.DataFrame()
+    except pd.errors.EmptyDataError: st.error(f"Error: Data file '{final_csv_path}' is empty."); return pd.DataFrame()
+    except Exception as e: st.error(f"Error loading data from '{final_csv_path}': {e}"); return pd.DataFrame()
 
-    except FileNotFoundError:
-        st.error(f"Error: The data file '{os.path.abspath(final_json_path)}' was not found.")
-        return pd.DataFrame()
-    except json.JSONDecodeError:
-        st.error(f"Error: Could not decode JSON from '{final_json_path}'. File might be corrupted.")
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"An unexpected error occurred while loading data from '{final_json_path}': {e}")
-        return pd.DataFrame()
 
-data_df = load_data() # Uses default "portuguese_parliament_votes_json.json"
+data_df = load_data() 
 
 # --- Get Topic ID from Session State ---
 issue_id_param = st.session_state.get("selected_issue_identifier")
 
 if issue_id_param and not data_df.empty:
-    # Convert to string for comparison
-    data_df['issue_identifier_str'] = data_df['issue_identifier'].astype(str)
-    topic_details_df = data_df[data_df['issue_identifier_str'] == str(issue_id_param)]
+    # 'issue_identifier' is already string from load_data
+    topic_details_df = data_df[data_df['issue_identifier'] == str(issue_id_param)]
 
     if not topic_details_df.empty:
         # General Info (from the first row, should be consistent per issue_identifier)
@@ -134,118 +196,171 @@ if issue_id_param and not data_df.empty:
         st.title(f"🗳️ {topic_info['full_title']}")
         st.markdown("---")
 
-        # --- New Summary Section ---
-        with st.container(border=True): # Visually group the summary
+        # --- Summary Section ---
+        with st.container(border=True): 
             st.subheader(f"Resultado Geral: {topic_info['vote_outcome'].upper()}")
 
             parties_favor_summary = []
             parties_against_summary = []
             parties_abstention_summary = []
 
-            # Determine party stances for summary from topic_details_df
             for _, party_row in topic_details_df.iterrows():
+                if party_row['party'] == 'N/A': continue # Skip if no party data for this proposal
                 party_name = party_row['party']
                 favor_votes = int(party_row.get('votes_favor', 0))
                 against_votes = int(party_row.get('votes_against', 0))
                 abstention_votes = int(party_row.get('votes_abstention', 0))
-
-                if favor_votes > 0 and favor_votes > against_votes and favor_votes > abstention_votes:
+                
+                # Determine majority vote for the party
+                if favor_votes > against_votes and favor_votes > abstention_votes:
                     parties_favor_summary.append(party_name)
-                elif against_votes > 0 and against_votes > favor_votes and against_votes > abstention_votes:
+                elif against_votes > favor_votes and against_votes > abstention_votes:
                     parties_against_summary.append(party_name)
-                elif abstention_votes > 0 and abstention_votes > favor_votes and abstention_votes > against_votes:
+                elif abstention_votes > favor_votes and abstention_votes > against_votes: # Only count as abstention if it's the primary stance
                     parties_abstention_summary.append(party_name)
+                # If tied, or only non-voters, they won't appear in these lists.
             
             if parties_favor_summary:
-                st.markdown(f"**A FAVOR:** {', '.join(sorted(parties_favor_summary))}")
+                st.markdown(f"**A FAVOR (maioria do partido):** {', '.join(sorted(list(set(parties_favor_summary))))}")
             else:
-                st.markdown("**A FAVOR:** -")
+                st.markdown("**A FAVOR (maioria do partido):** -")
             
             if parties_against_summary:
-                st.markdown(f"**CONTRA:** {', '.join(sorted(parties_against_summary))}")
+                st.markdown(f"**CONTRA (maioria do partido):** {', '.join(sorted(list(set(parties_against_summary))))}")
             else:
-                st.markdown("**CONTRA:** -")
+                st.markdown("**CONTRA (maioria do partido):** -")
 
             if parties_abstention_summary:
-                st.markdown(f"**ABSTENÇÃO:** {', '.join(sorted(parties_abstention_summary))}")
+                st.markdown(f"**ABSTENÇÃO (maioria do partido):** {', '.join(sorted(list(set(parties_abstention_summary))))}")
             else:
-                st.markdown("**ABSTENÇÃO:** -")
+                st.markdown("**ABSTENÇÃO (maioria do partido):** -")
             
-            st.markdown(" ") # Add a little space
+            st.markdown(" ") 
 
             if pd.notna(topic_info['issue_type']):
                 st.markdown(f"**Tipo de Iniciativa:** {topic_info['issue_type']}")
             if pd.notna(topic_info['issue_identifier']):
                 st.markdown(f"**Identificador:** {topic_info['issue_identifier']}")
             if 'is_unanimous' in topic_info and pd.notna(topic_info['is_unanimous']):
-                 st.markdown(f"**Votação Unânime:** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
-        # --- End of New Summary Section ---
+                 st.markdown(f"**Votação Unânime (geral):** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
         
-        # The original col1, col2 section is now integrated into the summary above.
-
-        if pd.notna(topic_info['description']) and topic_info['description'].strip():
-            with st.expander("📜 **Descrição da Iniciativa**", expanded=True):
+        # --- Authors Section ---
+        if pd.notna(topic_info['authors_json_str']) and topic_info['authors_json_str'] != '[]':
+            try:
+                authors_list = json.loads(topic_info['authors_json_str'])
+                if authors_list: # Ensure it's not an empty list string like "[]" that becomes empty list
+                    with st.expander("👥 **Autores/Proponentes da Iniciativa**", expanded=False):
+                        for author in authors_list:
+                            if isinstance(author, dict) and 'name' in author:
+                                if 'link' in author and author['link']:
+                                    st.markdown(f"- [{author['name']}]({author['link']})")
+                                else:
+                                    st.markdown(f"- {author['name']}")
+                            elif isinstance(author, str): # Handle if authors_json is just a list of strings
+                                st.markdown(f"- {author}")
+            except json.JSONDecodeError:
+                st.caption("Não foi possível carregar a lista de autores.")
+        
+        # --- Description and Summaries Section ---
+        if pd.notna(topic_info['description']) and topic_info['description'].strip() and topic_info['description'] != 'Descrição não disponível.':
+            with st.expander("📜 **Descrição Geral da Iniciativa**", expanded=True):
                 st.markdown(topic_info['description'])
         
+        if pd.notna(topic_info['proposal_summary_analysis']) and topic_info['proposal_summary_analysis'].strip():
+            with st.expander("🔬 **Análise da Proposta**", expanded=False):
+                st.markdown(topic_info['proposal_summary_analysis'])
+
+        if pd.notna(topic_info['proposal_summary_fiscal_impact']) and topic_info['proposal_summary_fiscal_impact'].strip():
+            with st.expander("💰 **Impacto Fiscal Estimado**", expanded=False):
+                st.markdown(topic_info['proposal_summary_fiscal_impact'])
+
+        if pd.notna(topic_info['proposal_summary_colloquial']) and topic_info['proposal_summary_colloquial'].strip():
+            with st.expander("🗣️ **Em Português Claro (Resumo Coloquial)**", expanded=False):
+                st.markdown(topic_info['proposal_summary_colloquial'])
+        
         if pd.notna(topic_info['hyperlink']) and topic_info['hyperlink'].strip():
-            st.markdown(f"🔗 **Link para o documento oficial:** [Aceder aqui]({topic_info['hyperlink']})", unsafe_allow_html=True)
+            st.markdown(f"🔗 **Link para o documento/iniciativa:** [Aceder aqui]({topic_info['hyperlink']})", unsafe_allow_html=True)
 
         st.markdown("---")
         st.subheader("📊 Votação por Partido Político")
-
-        # Display votes per party in a table
-        # Sort parties for consistent display, e.g., by name or by number of MPs
-        sorted_parties_df = topic_details_df.sort_values(by='party_total_mps', ascending=False)
         
-        table_data_rows = []
-        for _, party_vote_row in sorted_parties_df.iterrows():
-            party_name = party_vote_row['party']
-            favor = int(party_vote_row.get('votes_favor', 0))
-            against = int(party_vote_row.get('votes_against', 0))
-            abstention = int(party_vote_row.get('votes_abstention', 0))
+        # Filter out N/A party if it exists and there are other parties.
+        display_parties_df = topic_details_df[topic_details_df['party'] != 'N/A']
+        if display_parties_df.empty and not topic_details_df.empty: # Only N/A party was found
+            display_parties_df = topic_details_df 
+        elif display_parties_df.empty and topic_details_df.empty: # No data at all
+             st.markdown("Não há dados de votação por partido para exibir.")
 
-            favor_tick = "✅" if favor > 0 and favor > against and favor > abstention else ""
-            against_tick = "✅" if against > 0 and against > favor and against > abstention else ""
-            abstention_tick = "✅" if abstention > 0 and abstention > favor and abstention > against else ""
+
+        if not display_parties_df.empty:
+            # Sort parties for consistent display (e.g., alphabetically)
+            # No party_total_mps for sorting by size.
+            sorted_parties_df = display_parties_df.sort_values(by='party') 
             
-            table_data_rows.append({
-                "Partido": party_name,
-                "A Favor": favor_tick,
-                "Contra": against_tick,
-                "Abstenção": abstention_tick
-            })
+            # Option 1: Table display (concise)
+            table_data_rows = []
+            for _, party_vote_row in sorted_parties_df.iterrows():
+                party_name = party_vote_row['party']
+                if party_name == 'N/A' and len(sorted_parties_df) > 1: continue # Skip N/A if other parties exist
 
-        if table_data_rows:
-            party_votes_df = pd.DataFrame(table_data_rows)
-            st.table(party_votes_df.set_index("Partido"))
-        else:
-            st.markdown("Não há dados de votação por partido para exibir nesta tabela.")
+                favor = int(party_vote_row.get('votes_favor', 0))
+                against = int(party_vote_row.get('votes_against', 0))
+                abstention = int(party_vote_row.get('votes_abstention', 0))
+                not_voted = int(party_vote_row.get('votes_not_voted', 0))
 
-        # Remove old party voting display method
-        # for _, party_vote_row in sorted_parties_df.iterrows():
-        #     party_name = party_vote_row['party']
-        #     total_mps = int(party_vote_row.get('party_total_mps', 0))
-        #     favor = int(party_vote_row.get('votes_favor', 0))
-        #     against = int(party_vote_row.get('votes_against', 0))
-        #     abstention = int(party_vote_row.get('votes_abstention', 0))
+                # Determine party's primary stance for a simple tick
+                main_stance = ""
+                if favor > against and favor > abstention: main_stance = "A Favor ✅"
+                elif against > favor and against > abstention: main_stance = "Contra ❌"
+                elif abstention > favor and abstention > against: main_stance = "Abstenção 🤷"
+                elif favor == 0 and against == 0 and abstention == 0 and not_voted > 0: main_stance = "Não Votou"
+                elif favor == 0 and against == 0 and abstention == 0 and not_voted == 0: main_stance = "Sem registo"
+
+
+                table_data_rows.append({
+                    "Partido": party_name,
+                    "Posição Principal": main_stance,
+                    "A Favor": favor,
+                    "Contra": against,
+                    "Abstenção": abstention,
+                    "Não Votaram": not_voted
+                })
             
-        #     voted_mps = favor + against + abstention
-        #     non_voters = total_mps - voted_mps if total_mps > 0 else 0
+            if table_data_rows:
+                party_votes_display_df = pd.DataFrame(table_data_rows)
+                st.table(party_votes_display_df.set_index("Partido"))
+            elif topic_details_df.iloc[0]['party'] == 'N/A':
+                 st.markdown("Não há dados de votação por partido disponíveis para esta iniciativa.")
+            else:
+                 st.markdown("Processando dados de votação por partido...")
 
-        #     with st.container(border=True):
-        #         st.markdown(f"#### {party_name} ({total_mps} Deputados)")
+
+            # Option 2: Detailed metric display (like before, but using 'votes_not_voted')
+            st.markdown("---")
+            st.subheader("Detalhe dos Votos por Partido:")
+            for _, party_vote_row in sorted_parties_df.iterrows():
+                party_name = party_vote_row['party']
+                if party_name == 'N/A' and len(sorted_parties_df) > 1: continue
+
+                favor = int(party_vote_row.get('votes_favor', 0))
+                against = int(party_vote_row.get('votes_against', 0))
+                abstention = int(party_vote_row.get('votes_abstention', 0))
+                not_voted = int(party_vote_row.get('votes_not_voted', 0))
                 
-        #         cols = st.columns(3 if non_voters <= 0 else 4)
+                with st.container(border=True):
+                    st.markdown(f"#### {party_name}")
+                    cols = st.columns(4)
+                    with cols[0]:
+                        st.metric(label="👍 A Favor", value=favor)
+                    with cols[1]:
+                        st.metric(label="👎 Contra", value=against)
+                    with cols[2]:
+                        st.metric(label="🤷 Abstenções", value=abstention)
+                    with cols[3]:
+                        st.metric(label="👤 Ausentes/Não Votaram", value=not_voted, help="Deputados ausentes ou que não exerceram o seu direito de voto.")
+        else:
+            st.markdown("Não há dados de votação por partido para exibir.")
 
-        #         with cols[0]:
-        #             st.metric(label="👍 A Favor", value=favor)
-        #         with cols[1]:
-        #             st.metric(label="👎 Contra", value=against)
-        #         with cols[2]:
-        #             st.metric(label="🤷 Abstenções", value=abstention)
-        #         if non_voters > 0:
-        #              with cols[3]:
-        #                 st.metric(label="👤 Ausentes/Não Votaram", value=non_voters, help="Deputados ausentes ou que não exerceram o seu direito de voto.")
 
     else:
         st.error(f"Não foram encontrados detalhes para a votação com o identificador: {issue_id_param}")
@@ -254,7 +369,7 @@ if issue_id_param and not data_df.empty:
 elif data_df.empty:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro na consola ou na página principal.")
 else:
-    st.info("Selecione uma votação na página 'Browse Topics' ou pesquise na página inicial para ver os detalhes.")
+    st.info("Selecione uma votação na página 'Todas as Votações' ou pesquise na página inicial para ver os detalhes.")
     st.page_link("streamlit_app.py", label="Ir para a Página Inicial", icon="🏠")
     st.page_link("pages/1_Browse_Topics.py", label="Navegar por Todas as Votações", icon="📜")
 
