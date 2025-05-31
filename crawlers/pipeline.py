@@ -69,7 +69,8 @@ def get_dataframe_columns():
         'proposal_name_from_session', 'proposal_gov_link', 'voting_details_json', 'session_parse_status',
         'proposal_authors_json', 'proposal_document_url', 'proposal_document_type', 
         'proposal_document_local_path', 'proposal_doc_download_status', 'proposal_details_scrape_status',
-        'proposal_summary_llm', 'proposal_summarize_status',
+        'proposal_summary_general', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 
+        'proposal_summary_colloquial', 'proposal_category', 'proposal_summarize_status',
         'overall_status', 'last_error_message', 'last_processed_timestamp'
     ]
 
@@ -426,17 +427,58 @@ def fetch_proposal_details_and_download_doc(proposal_page_url, download_dir):
 
 # --- Script 4: Proposal Summary (Summarize Proposal Document with LLM) ---
 def summarize_proposal_text(proposal_document_text):
-    prompt = """Provide this answer in Portuguese from Portugal: This is a government proposal that was voted on in the Portuguese Parliament in Portugal and so is full of legal language. Summarize this document into 4 bullet points, avoiding all the legalese completely and summarize in normal vocabulary.
-The first bullet point should be a general summary of the proposal.
-The second should you should think critically about the document and point out inconsistencies if there are any, and if not show how the implementation details align with the goal.
-The third bullet point should be an educated estimate if the proposal will increase or decrease government spending and increase or decrease government revenue as well, and what the net effect may be.
-Last bullet point should be another summary, but in more colloquial language.
-Ensure the output is just the 4 bullet points.
+    prompt = """Provide this answer in Portuguese from Portugal: This is a government proposal that was voted on in the Portuguese Parliament in Portugal and so is full of legal language. Analyze this document and provide a structured JSON response with the following fields:
+
+1. "general_summary": A general summary of the proposal, avoiding legalese and using normal vocabulary
+2. "critical_analysis": Think critically about the document and point out inconsistencies if there are any, and if not show how the implementation details align with the goal
+3. "fiscal_impact": An educated estimate if the proposal will increase or decrease government spending and increase or decrease government revenue as well, and what the net effect may be
+4. "colloquial_summary": Another summary, but in more colloquial language
+5. "categories": An array of one or more categories that this proposal fits into. Choose from the following categories:
+   - "Saude e Cuidados Sociais"
+   - "Educacao e Competências"
+   - "Defesa e Segurança Nacional"
+   - "Justica, Lei e Ordem"
+   - "Economia e Financas"
+   - "Bem-Estar e Seguranca Social"
+   - "Ambiente, Agricultura e Pescas"
+   - "Energia e Clima"
+   - "Transportes e Infraestruturas"
+   - "Habitacao, Comunidades e Administracao Local"
+   - "Negocios Estrangeiros e Cooperacao Internacional"
+   - "Ciencia, Tecnologia e Digital"
+
+Return only a valid JSON object with these 5 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
+
+Example format:
+{
+  "general_summary": "...",
+  "critical_analysis": "...",
+  "fiscal_impact": "...",
+  "colloquial_summary": "...",
+  "categories": ["Economia e Finanças", "Bem-Estar e Segurança Social"]
+}
 """
-    summary, error = call_gemini_api(prompt, document_content=proposal_document_text)
+    summary_data, error = call_gemini_api(prompt, document_content=proposal_document_text, expect_json=True)
     if error:
         return None, f"LLM API call failed for summary: {error}"
-    return summary, None
+    
+    # Validate the returned JSON structure
+    if not isinstance(summary_data, dict):
+        return None, f"LLM did not return a JSON object as expected. Got: {type(summary_data)}"
+    
+    required_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 'colloquial_summary', 'categories']
+    for field in required_fields:
+        if field not in summary_data:
+            return None, f"Missing required field '{field}' in LLM response: {summary_data}"
+    
+    # Validate that categories is a list
+    if not isinstance(summary_data['categories'], list):
+        return None, f"Field 'categories' should be a list, got: {type(summary_data['categories'])}"
+    
+    # Convert categories list to JSON string for storage
+    summary_data['categories'] = json.dumps(summary_data['categories'])
+    
+    return summary_data, None
 
 def generate_session_pdf_filename(session_pdf_url, session_year):
     """Generate a safe, descriptive filename for session PDFs."""
@@ -671,13 +713,18 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     df.loc[row_idx, 'last_error_message'] = prop_text_err
                     df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (Proposal Text Extraction)'
                 else:
-                    summary, summary_err = summarize_proposal_text(proposal_doc_text)
+                    summary_data, summary_err = summarize_proposal_text(proposal_doc_text)
                     if summary_err:
                         df.loc[row_idx, 'proposal_summarize_status'] = f'LLM Summary Failed: {summary_err}'
                         df.loc[row_idx, 'last_error_message'] = summary_err
                         df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (LLM Summary)'
                     else:
-                        df.loc[row_idx, 'proposal_summary_llm'] = summary
+                        # Store individual summary fields in separate columns
+                        df.loc[row_idx, 'proposal_summary_general'] = summary_data['general_summary']
+                        df.loc[row_idx, 'proposal_summary_analysis'] = summary_data['critical_analysis']
+                        df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
+                        df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
+                        df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
                         df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
                         df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
                 df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
