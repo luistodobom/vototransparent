@@ -438,7 +438,4 @@ else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
 # --- Footer ---
-st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luís Todo Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados.</div>", unsafe_allow_html=True)
-# st.markdown(\"---\")
-# st.markdown(\"Desenvolvido com ❤️ por [Luís Todo Bom]\") # Placeholder for actual name/org
-# st.markdown(\"Dados extraídos de documentos oficiais da Assembleia da República e processados.\")
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por MEIC-Top<br>Dados extraídos de documentos oficiais da Assembleia da República e processados.</div>", unsafe_allow_html=True)
