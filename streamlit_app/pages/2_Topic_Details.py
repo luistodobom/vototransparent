@@ -12,7 +12,7 @@ st.set_page_config(
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(json_path="portuguese_parliament_votes_json.json"): # Adjusted path for pages folder
+def load_data(json_path="../data/portuguese_parliament_votes_json.json"): # Adjusted path for pages folder
     # Corrected path logic for files inside 'pages' directory, assuming json is at project root
     final_json_path = json_path 
     if not os.path.isabs(json_path) and os.path.basename(os.getcwd()) == "pages":

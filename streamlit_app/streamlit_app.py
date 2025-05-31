@@ -13,7 +13,7 @@ st.set_page_config(
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(json_path="portuguese_parliament_votes_json.json"):
+def load_data(json_path="../data/portuguese_parliament_votes_json.json"): # Adjusted path for pages folder
     if not os.path.exists(json_path):
         st.error(f"Error: The data file '{os.path.abspath(json_path)}' was not found. "
                  f"Please ensure it's generated (e.g., by an extraction script).")

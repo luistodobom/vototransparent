@@ -12,7 +12,7 @@ st.set_page_config(
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(json_path="portuguese_parliament_votes_json.json"):  # Adjusted path for pages folder
+def load_data(json_path="../data/portuguese_parliament_votes_json.json"): # Adjusted path for pages folder
     # Path adjustment for pages folder if JSON is at root:
     actual_json_path = os.path.join("..", json_path) if not os.path.isabs(json_path) else json_path
     # However, if extract_data.py puts it in the root, and pages run from root, direct path is fine.
