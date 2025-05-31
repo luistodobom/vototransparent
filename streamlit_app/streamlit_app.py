@@ -110,7 +110,7 @@ st.markdown("""
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path
+def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
     final_csv_path = csv_path
     # Note: Path adjustment logic for 'pages' is not strictly needed here if streamlit_app.py is not in 'pages'
     # However, to keep the function identical, it can remain.

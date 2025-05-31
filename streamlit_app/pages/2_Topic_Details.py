@@ -16,7 +16,7 @@ st.set_page_config(
 # The load_data function is identical to the one in streamlit_app.py
 # Path adjustment for pages is handled by the default path.
 @st.cache_data
-def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path for pages
+def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
     final_csv_path = csv_path
     # Path adjustment logic (same considerations as in 1_Browse_Topics.py)
     if not os.path.exists(final_csv_path):

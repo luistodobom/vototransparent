@@ -13,7 +13,7 @@ st.set_page_config(
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path for pages
+def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
     final_csv_path = csv_path
     # Original path adjustment logic from this file (slightly modified for robustness)
     # Simplified: The default path should be correct if script is in streamlit_app/pages/
