@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 import re # For extracting BID
+import unicodedata
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -327,6 +328,16 @@ def load_data(csv_path="../data/parliament_data.csv"): # Adjusted default path
 
 data_df = load_data()
 
+# --- Helper function to normalize text ---
+def normalize_text(text):
+    # Remove accents
+    nfkd_form = unicodedata.normalize('NFKD', str(text))
+    text_without_accents = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+    # Remove special characters and convert to lowercase
+    text_without_special_chars = re.sub(r'[^a-zA-Z0-9\\s]', '', text_without_accents)
+    return text_without_special_chars.lower()
+
+
 # --- Homepage ---
 # Use markdown for custom styled title and subtitle
 st.markdown("<div class='custom-title'>🇵🇹 VotoTransparente</div>", unsafe_allow_html=True)
@@ -350,17 +361,26 @@ if not data_df.empty:
         # Consolidate data to one row per issue for search results
         # Ensure 'issue_identifier' is unique for drop_duplicates
         search_df_unique_issues = data_df.drop_duplicates(subset=['issue_identifier']).copy()
-        
+
+        # Normalize search query
+        normalized_search_query = normalize_text(search_query)
+
         # Ensure 'description' and 'full_title' are strings for searching
         search_df_unique_issues['description'] = search_df_unique_issues['description'].astype(str)
         search_df_unique_issues['full_title'] = search_df_unique_issues['full_title'].astype(str)
         # 'issue_identifier' is already string from load_data
-        # search_df_unique_issues['issue_identifier_str'] = search_df_unique_issues['issue_identifier'].astype(str) # Redundant if already string
+
+        # Apply normalization to searchable columns
+        # Create temporary columns for normalized search
+        search_df_unique_issues['normalized_full_title'] = search_df_unique_issues['full_title'].apply(normalize_text)
+        search_df_unique_issues['normalized_description'] = search_df_unique_issues['description'].apply(normalize_text)
+        search_df_unique_issues['normalized_issue_identifier'] = search_df_unique_issues['issue_identifier'].astype(str).apply(normalize_text)
+
 
         results = search_df_unique_issues[
-            search_df_unique_issues['full_title'].str.contains(search_query, case=False, na=False) |
-            search_df_unique_issues['description'].str.contains(search_query, case=False, na=False) |
-            search_df_unique_issues['issue_identifier'].str.contains(search_query, case=False, na=False) # Use 'issue_identifier' directly
+            search_df_unique_issues['normalized_full_title'].str.contains(normalized_search_query, case=False, na=False) |
+            search_df_unique_issues['normalized_description'].str.contains(normalized_search_query, case=False, na=False) |
+            search_df_unique_issues['normalized_issue_identifier'].str.contains(normalized_search_query, case=False, na=False)
         ]
 
         if not results.empty:
