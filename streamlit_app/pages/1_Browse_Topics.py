@@ -191,17 +191,48 @@ data_df = load_data()
 
 st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
+
+# --- Category Filter ---
+categories = [
+    "Saúde e Cuidados Sociais", "Educação e Competências", "Defesa e Segurança Nacional",
+    "Justiça, Lei e Ordem", "Economia e Finanças", "Bem-Estar e Segurança Social",
+    "Ambiente, Agricultura e Pescas", "Energia e Clima", "Transportes e Infraestruturas",
+    "Habitação, Comunidades e Administração Local", "Negócios Estrangeiros e Cooperação Internacional",
+    "Ciência, Tecnologia e Digital"
+]
+
+st.markdown("#### Filtrar por Categoria:")
+selected_categories = st.multiselect(
+    label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
+    options=categories,
+    label_visibility="collapsed" # More compact
+)
 st.markdown("---")
 
 if not data_df.empty:
     # Get unique topics based on issue_identifier, keeping the first occurrence for title and outcome
     unique_topics = data_df.drop_duplicates(subset=['issue_identifier'])
-    
-    if not unique_topics.empty:
-        # Optional: sort by title or identifier
-        # unique_topics = unique_topics.sort_values(by='full_title') 
 
-        for _, topic_row in unique_topics.iterrows():
+    filtered_topics = unique_topics.copy() # Start with all unique topics
+
+    if selected_categories:
+        # Ensure 'description' and 'full_title' are strings for searching
+        filtered_topics['description_str'] = filtered_topics['description'].astype(str).str.lower()
+        filtered_topics['full_title_str'] = filtered_topics['full_title'].astype(str).str.lower()
+
+        for category in selected_categories:
+            category_lower = category.lower()
+            # AND condition: filter progressively
+            filtered_topics = filtered_topics[
+                filtered_topics['full_title_str'].str.contains(category_lower, na=False) |
+                filtered_topics['description_str'].str.contains(category_lower, na=False)
+            ]
+    
+    if not filtered_topics.empty:
+        # Optional: sort by title or identifier
+        # filtered_topics = filtered_topics.sort_values(by='full_title') 
+
+        for _, topic_row in filtered_topics.iterrows():
             with st.container(border=True):
                 col1, col2 = st.columns([3, 1])
                 with col1:
@@ -234,7 +265,7 @@ if not data_df.empty:
                         st.markdown("Não há detalhes adicionais disponíveis.")
 
     else:
-        st.info("Não foram encontradas votações para listar.")
+        st.info("Não foram encontradas votações para os filtros selecionados." if selected_categories else "Não foram encontradas votações para listar.")
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro.")
 
