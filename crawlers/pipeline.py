@@ -243,6 +243,11 @@ class ParliamentPDFScraper:
         for link_tag in all_anchor_tags:
             href = link_tag.get('href', '')
             text_content = link_tag.get_text(strip=True)
+
+            # Skip supplementary guides
+            if "guião suplementar" in text_content.lower():
+                print(f"Skipping supplementary guide: {text_content} ({href})")
+                continue
             
             # Prioritize links that look like direct PDF links related to voting summaries
             # Example: DARxxx.pdf, _Votacoes_, _ResultadosVotacao_
@@ -287,7 +292,14 @@ Identify all distinct issues/proposals voted on in this document.
 For each issue/proposal, extract the following information:
 1.  'proposal_name': The unique identifier (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1"). This is often found near the title of the item being voted.
 2.  'proposal_link': The hyperlink associated with this specific issue/proposal, if explicitly mentioned in the text. This link usually points to a parlamento.pt URL. If no link is found, use null.
-3.  'voting_summary': A structured representation of how each political party voted (e.g., In Favor, Against, Abstain) and the number of votes for each. The parties are usually abbreviated (PS, PSD, CH, IL, PCP, BE, PAN, L). Capture the votes for each party. The table might show numbers or 'X' (meaning all MPs of that party voted that way, with total party MPs often at the top of the column or table).
+3.  'voting_summary': A structured representation of how each political party voted. The parties are usually abbreviated (PS, PSD, CH, IL, PCP, BE, PAN, L).
+    *   **Output Format**: For each party, provide the number of votes for "Favor" (In Favor), "Contra" (Against), "Abstenção" (Abstain), and "Não Votaram" (Did Not Vote).
+    *   **Interpreting Voting Tables**:
+        *   If the table shows numbers for each party's vote, use those numbers directly.
+        *   If the table uses an 'X' for a party's vote, this means all MPs of that party voted in that manner. The total number of MPs for that party is typically found in the header row of the voting table, associated with the party's name. Use this total number for the category marked 'X' and 0 for other categories (Favor, Contra, Abstenção). Assume "Não Votaram" is 0 unless specified.
+        *   If a proposal is marked "Aprovado por unanimidade" (Approved unanimously) or similar, assume all present and voting MPs from the main parties (PS, PSD, CH, IL, PCP, BE, PAN, L) voted "Favor". You will need to infer the number of "Favor" votes for each party based on typical party sizes or context if exact numbers per party are not given for unanimous votes. If total MPs per party are available from table headers (even from other votes in the same document), use those as the "Favor" count for unanimous votes. Otherwise, clearly state the vote was unanimous and provide a reasonable representative number if possible, or a placeholder if not.
+    *   **"Unanimidade" for Multiple Proposals**: Sometimes "Unanimidade" is stated after a list of proposals, indicating all those proposals were approved unanimously. Apply the unanimous voting logic to each of these proposals.
+    *   **Consistency**: Always provide the voting breakdown with numerical counts for "Favor", "Contra", "Abstenção", and "Não Votaram" for each party.
 
 Output the result as a JSON array, where each element of the array is an object corresponding to one proposal. Each object must contain 'proposal_name', 'proposal_link', and 'voting_summary' keys.
 Example of a single element in the JSON array:
@@ -295,9 +307,9 @@ Example of a single element in the JSON array:
   "proposal_name": "Projeto de Lei 123/XV/2",
   "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=XXXXX",
   "voting_summary": {
-    "PS": {"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2},
-    "PSD": {"Favor": 0, "Contra": "X", "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 70},
-    "CH": {"Favor": 10, "Contra": 0, "Abstenção": 0, "Não Votaram": 0}
+    "PS": {"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107},
+    "PSD": {"Favor": 0, "Contra": "65", "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66},
+    "CH": {"Favor": 10, "Contra": 0, "Abstenção": 0, "Não Votaram": 0, "TotalDeputados": 10},
   }
 }
 If you cannot find a specific piece of information for a proposal (e.g. a link), use null for its value. Ensure the output is a valid JSON array.
@@ -761,6 +773,6 @@ if __name__ == "__main__":
     # Example: Process data for the last 2 years, up to 10 session PDFs
     # For a full run, you might remove max_sessions_to_process or set it higher
     # And adjust start_year as needed.
-    run_pipeline(start_year=datetime.now().year, end_year=datetime.now().year, max_sessions_to_process=None) 
+    run_pipeline(start_year=2024, end_year=2024, max_sessions_to_process=None) 
     # To run for all available years from 2012 (as per original script 1 default):
     # run_pipeline(start_year=2012, end_year=datetime.now().year)
