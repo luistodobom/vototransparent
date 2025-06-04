@@ -26,6 +26,7 @@ PROPOSAL_DOC_DIR = "data/proposal_docs"
 DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_DELAY = 5  # seconds
+PDF_PAGE_PARTITION_SIZE = 5  # Process PDFs in chunks of this many pages
 
 # Load environment variables
 load_dotenv()
@@ -388,7 +389,20 @@ def extract_votes_from_session_pdf_text(session_pdf_path):
     """Enhanced voting extraction using manual PDF parsing followed by LLM processing."""
     print(f"Starting enhanced PDF parsing for: {session_pdf_path}")
     
-    # First, extract structured data from PDF
+    # Check if PDF needs to be partitioned
+    try:
+        doc_fitz = fitz.open(session_pdf_path)
+        page_count = len(doc_fitz)
+        doc_fitz.close()
+        print(f"PDF has {page_count} pages")
+        
+        # If PDF is longer than partition size, process in chunks
+        if page_count > PDF_PAGE_PARTITION_SIZE:
+            return process_long_pdf_in_chunks(session_pdf_path, page_count)
+    except Exception as e:
+        print(f"Error checking PDF page count: {e}")
+    
+    # For smaller PDFs, continue with regular processing
     try:
         hyperlink_table_pairs, unpaired_links = extract_hyperlink_table_pairs_and_unpaired_links(session_pdf_path)
         print(f"Manual parsing found {len(hyperlink_table_pairs)} hyperlink-table pairs and {len(unpaired_links)} unpaired links")
@@ -401,6 +415,216 @@ def extract_votes_from_session_pdf_text(session_pdf_path):
         return extract_votes_from_session_pdf_text_original(text)
     
     # Format the structured data for the LLM
+    structured_data_text = format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links)
+    
+    # Call LLM with the structured data
+    extracted_data, error = call_gemini_api(create_structured_data_prompt(structured_data_text), expect_json=True)
+    if error:
+        return None, f"LLM API call failed: {error}"
+    if not isinstance(extracted_data, list):
+        return None, f"LLM did not return a list as expected. Got: {type(extracted_data)}"
+    
+    # Validate results
+    valid_proposals = validate_llm_proposals_response(extracted_data)
+    
+    if not valid_proposals and extracted_data:
+         return None, f"LLM returned data but no valid proposal structures found. Raw: {str(extracted_data)[:500]}"
+    elif not valid_proposals and not extracted_data:
+        return None, "LLM returned no processable proposal data."
+
+    print(f"Successfully extracted {len(valid_proposals)} proposals using enhanced parsing method")
+    return valid_proposals, None
+
+def process_long_pdf_in_chunks(session_pdf_path, page_count):
+    """Process a long PDF by partitioning it into smaller chunks."""
+    print(f"Processing long PDF ({page_count} pages) in chunks of {PDF_PAGE_PARTITION_SIZE} pages")
+    
+    all_proposals = []
+    partition_errors = []
+    
+    # Create page range partitions
+    partitions = []
+    start_page = 1  # 1-indexed for tabula
+    while start_page <= page_count:
+        end_page = min(start_page + PDF_PAGE_PARTITION_SIZE - 1, page_count)
+        partitions.append((start_page, end_page))
+        start_page = end_page + 1
+    
+    print(f"Created {len(partitions)} partitions: {partitions}")
+    
+    # Process each partition
+    for i, (start_page, end_page) in enumerate(partitions):
+        print(f"Processing partition {i+1}/{len(partitions)}: pages {start_page}-{end_page}")
+        
+        # Extract hyperlinks and tables for this partition only
+        try:
+            hyperlink_table_pairs, unpaired_links = extract_hyperlink_table_pairs_for_page_range(
+                session_pdf_path, start_page, end_page
+            )
+            print(f"Partition {i+1}: Found {len(hyperlink_table_pairs)} hyperlink-table pairs and {len(unpaired_links)} unpaired links")
+            
+            if not hyperlink_table_pairs and not unpaired_links:
+                print(f"Partition {i+1}: No data extracted, skipping LLM call")
+                continue
+                
+            # Format structured data for this partition
+            structured_data_text = format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links)
+            
+            # Call LLM with the structured data for this partition
+            partition_prompt = create_structured_data_prompt(structured_data_text)
+            partition_data, error = call_gemini_api(partition_prompt, expect_json=True)
+            
+            if error:
+                partition_errors.append(f"Partition {i+1} (pages {start_page}-{end_page}): {error}")
+                print(f"Error processing partition {i+1}: {error}")
+                continue
+                
+            if not isinstance(partition_data, list):
+                partition_errors.append(f"Partition {i+1} (pages {start_page}-{end_page}): LLM did not return a list")
+                print(f"Partition {i+1}: LLM did not return a list as expected. Got: {type(partition_data)}")
+                continue
+            
+            # Validate and add valid proposals from this partition
+            valid_partition_proposals = validate_llm_proposals_response(partition_data)
+            if valid_partition_proposals:
+                print(f"Partition {i+1}: Successfully extracted {len(valid_partition_proposals)} proposals")
+                all_proposals.extend(valid_partition_proposals)
+            else:
+                print(f"Partition {i+1}: No valid proposals extracted")
+        
+        except Exception as e:
+            partition_errors.append(f"Partition {i+1} (pages {start_page}-{end_page}): {str(e)}")
+            print(f"Error processing partition {i+1}: {e}")
+    
+    # Check results and return
+    if all_proposals:
+        # Deduplicate proposals based on name
+        deduplicated_proposals = []
+        seen_proposal_names = set()
+        for proposal in all_proposals:
+            if proposal.get('proposal_name') not in seen_proposal_names:
+                deduplicated_proposals.append(proposal)
+                seen_proposal_names.add(proposal.get('proposal_name'))
+        
+        print(f"Successfully extracted {len(deduplicated_proposals)} unique proposals from all partitions")
+        return deduplicated_proposals, None
+    elif partition_errors:
+        # Return the first error message or a combined error message
+        return None, f"Failed to process long PDF: {partition_errors[0]}"
+    else:
+        return None, "No proposals found in any partition of the long PDF"
+
+def extract_hyperlink_table_pairs_for_page_range(pdf_path, start_page, end_page):
+    """
+    Extract hyperlink-table pairs and unpaired links for a specific page range in the PDF.
+    Note: start_page and end_page are 1-indexed for consistency with tabula
+    """
+    extracted_pairs = []
+    unpaired_hyperlinks = []
+    doc_fitz = fitz.open(pdf_path)
+    
+    # Convert to 0-indexed for PyMuPDF
+    start_page_0idx = start_page - 1
+    end_page_0idx = end_page - 1
+    
+    # Process only the specified page range
+    for page_num in range(start_page_0idx, end_page_0idx + 1):
+        if page_num >= len(doc_fitz):
+            break
+            
+        page_fitz = doc_fitz[page_num]
+        
+        # 1. Extract hyperlinks from the current page
+        page_hyperlinks = []
+        links = page_fitz.get_links()
+        for link in links:
+            if link['kind'] == fitz.LINK_URI:
+                uri = link['uri']
+                rect = link['from']  # fitz.Rect object for the link area
+                link_text = page_fitz.get_text("text", clip=rect).strip()
+                
+                page_hyperlinks.append({
+                    'text': link_text if link_text else "N/A",
+                    'uri': uri,
+                    'rect': (rect.x0, rect.y0, rect.x1, rect.y1),
+                    'page_num_fitz': page_num # 0-indexed for internal use
+                })
+        
+        page_hyperlinks.sort(key=lambda h: h['rect'][1])
+
+        # 2. Extract tables from the current page using tabula
+        page_tables_data = []
+        try:
+            tables_on_page_json = tabula.read_pdf(pdf_path, 
+                                                 pages=str(page_num + 1), 
+                                                 output_format="json", 
+                                                 multiple_tables=True, 
+                                                 lattice=True,
+                                                 silent=True)
+            if not tables_on_page_json:
+                tables_on_page_json = tabula.read_pdf(pdf_path, 
+                                                     pages=str(page_num + 1), 
+                                                     output_format="json", 
+                                                     multiple_tables=True, 
+                                                     stream=True,
+                                                     silent=True)
+        except Exception as e:
+            tables_on_page_json = []
+
+        for table_json_data in tables_on_page_json:
+            table_rows_text = []
+            if table_json_data['data']:
+                for row_obj in table_json_data['data']:
+                    current_row = [cell['text'] for cell in row_obj]
+                    table_rows_text.append(current_row)
+            
+            if not table_rows_text:
+                continue
+            df = pd.DataFrame(table_rows_text)
+            page_tables_data.append({
+                'dataframe': df,
+                'top': table_json_data['top'],
+                'left': table_json_data['left'],
+                'bottom': table_json_data['top'] + table_json_data['height'],
+                'right': table_json_data['left'] + table_json_data['width'],
+                'page_num_fitz': page_num
+            })
+            
+        page_tables_data.sort(key=lambda t: t['top'])
+
+        # 3. Correlate hyperlinks and tables on the page
+        current_table_idx = 0
+        for hyperlink in page_hyperlinks:
+            hyperlink_bottom_y = hyperlink['rect'][3]
+            found_table_for_hyperlink = False
+
+            for table_idx in range(current_table_idx, len(page_tables_data)):
+                table = page_tables_data[table_idx]
+                table_top_y = table['top']
+
+                if table_top_y > hyperlink_bottom_y:
+                    extracted_pairs.append({
+                        'hyperlink_text': hyperlink['text'],
+                        'uri': hyperlink['uri'],
+                        'table_data': table['dataframe'],
+                        'page_num': hyperlink['page_num_fitz'] + 1
+                    })
+                    current_table_idx = table_idx + 1
+                    found_table_for_hyperlink = True
+                    break 
+            
+            if not found_table_for_hyperlink:
+                unpaired_hyperlinks.append({
+                    'hyperlink_text': hyperlink['text'],
+                    'uri': hyperlink['uri'],
+                    'page_num': hyperlink['page_num_fitz'] + 1
+                })
+
+    doc_fitz.close()
+    return extracted_pairs, unpaired_hyperlinks
+
+def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links):
+    """Format the structured data for the LLM."""
     structured_data_text = "STRUCTURED PROPOSAL DATA EXTRACTED FROM PDF:\n\n"
     
     # Add hyperlink-table pairs
@@ -424,7 +648,10 @@ def extract_votes_from_session_pdf_text(session_pdf_path):
             structured_data_text += f"   LINK: {link['uri']}\n"
             structured_data_text += f"   PAGE: {link['page_num']}\n"
     
-    # Enhanced prompt that works with structured data
+    return structured_data_text
+
+def create_structured_data_prompt(structured_data_text):
+    """Create the LLM prompt for structured data."""
     prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have already extracted the structured proposal data from the PDF for you.
 
 {structured_data_text}
@@ -460,82 +687,17 @@ Example format:
   }}
 ]
 """
-    
-    extracted_data, error = call_gemini_api(prompt, expect_json=True)
-    if error:
-        return None, f"LLM API call failed: {error}"
-    if not isinstance(extracted_data, list):
-        return None, f"LLM did not return a list as expected. Got: {type(extracted_data)}"
-    
-    # Basic validation of returned structure
+    return prompt
+
+def validate_llm_proposals_response(extracted_data):
+    """Validate the LLM response and return valid proposals."""
     valid_proposals = []
     for item in extracted_data:
         if isinstance(item, dict) and 'proposal_name' in item:
             valid_proposals.append(item)
         else:
             print(f"Warning: LLM returned an invalid item structure: {item}")
-            
-    if not valid_proposals and extracted_data:
-         return None, f"LLM returned data but no valid proposal structures found. Raw: {str(extracted_data)[:500]}"
-    elif not valid_proposals and not extracted_data:
-        return None, "LLM returned no processable proposal data."
-
-    print(f"Successfully extracted {len(valid_proposals)} proposals using enhanced parsing method")
-    return valid_proposals, None
-
-def extract_votes_from_session_pdf_text_original(pdf_text):
-    """Original text-based extraction method as fallback."""
-    prompt = """This is the voting record from a parliamentary session in Portugal.
-Identify all distinct issues/proposals voted on in this document.
-For each issue/proposal, extract the following information:
-1.  'proposal_name': The unique identifier (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1"). This is often found near the title of the item being voted.
-2.  'proposal_link': The hyperlink associated with this specific issue/proposal, if explicitly mentioned in the text. This link usually points to a parlamento.pt URL. If no link is found, use null.
-3.  'voting_summary': A structured representation of how each political party voted. The parties are usually abbreviated (PS, PSD, CH, IL, PCP, BE, PAN, L).
-    *   **Output Format**: For each party, provide the number of votes for "Favor" (In Favor), "Contra" (Against), "Abstenção" (Abstain), and "Não Votaram" (Did Not Vote).
-    *   **Interpreting Voting Tables**:
-        *   If the table shows numbers for each party's vote, use those numbers directly.
-        *   If the table uses an 'X' for a party's vote, this means all MPs of that party voted in that manner. The total number of MPs for that party is typically found in the header row of the voting table, associated with the party's name. Use this total number for the category marked 'X' and 0 for other categories (Favor, Contra, Abstenção). Assume "Não Votaram" is 0 unless specified.
-        *   If a proposal is marked "Aprovado por unanimidade" (Approved unanimously) or similar, assume all present and voting MPs from the main parties (PS, PSD, CH, IL, PCP, BE, PAN, L) voted "Favor". You will need to infer the number of "Favor" votes for each party based on typical party sizes or context if exact numbers per party are not given for unanimous votes. If total MPs per party are available from table headers (even from other votes in the same document), use those as the "Favor" count for unanimous votes. Otherwise, clearly state the vote was unanimous and provide a reasonable representative number if possible, or a placeholder if not.
-    *   **"Unanimidade" for Multiple Proposals**: Sometimes "Unanimidade" is stated after a list of proposals, indicating all those proposals were approved unanimously. Apply the unanimous voting logic to each of these proposals.
-    *   **Consistency**: Always provide the voting breakdown with numerical counts for "Favor", "Contra", "Abstenção", and "Não Votaram" for each party.
-
-Output the result as a JSON array, where each element of the array is an object corresponding to one proposal. Each object must contain 'proposal_name', 'proposal_link', and 'voting_summary' keys.
-Example of a single element in the JSON array:
-{
-  "proposal_name": "Projeto de Lei 123/XV/2",
-  "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=XXXXX",
-  "voting_summary": {
-    "PS": {"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107},
-    "PSD": {"Favor": 0, "Contra": "65", "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66},
-    "CH": {"Favor": 10, "Contra": 0, "Abstenção": 0, "Não Votaram": 0, "TotalDeputados": 10},
-  }
-}
-If you cannot find a specific piece of information for a proposal (e.g. a link), use null for its value. Ensure the output is a valid JSON array.
-
-TEXT TO ANALYZE:
-{pdf_text}
-"""
-    
-    extracted_data, error = call_gemini_api(prompt, expect_json=True)
-    if error:
-        return None, f"LLM API call failed: {error}"
-    if not isinstance(extracted_data, list):
-        return None, f"LLM did not return a list as expected. Got: {type(extracted_data)}"
-    
-    valid_proposals = []
-    for item in extracted_data:
-        if isinstance(item, dict) and 'proposal_name' in item and 'voting_summary' in item:
-            valid_proposals.append(item)
-        else:
-            print(f"Warning: LLM returned an invalid item structure: {item}")
-            
-    if not valid_proposals and extracted_data:
-         return None, f"LLM returned data but no valid proposal structures found. Raw: {str(extracted_data)[:500]}"
-    elif not valid_proposals and not extracted_data:
-        return None, "LLM returned no processable proposal data."
-
-    return valid_proposals, None
-
+    return valid_proposals
 
 # --- Script 3: Get Proposals (Scrape Proposal Details & Download Document) ---
 def fetch_proposal_details_and_download_doc(proposal_page_url, download_dir):
@@ -959,6 +1121,6 @@ if __name__ == "__main__":
     # Example: Process data for the last 2 years, up to 10 session PDFs
     # For a full run, you might remove max_sessions_to_process or set it higher
     # And adjust start_year as needed.
-    run_pipeline(start_year=2024, end_year=2024, max_sessions_to_process=None) 
+    run_pipeline(start_year=2025, end_year=2025, max_sessions_to_process=None) 
     # To run for all available years from 2012 (as per original script 1 default):
     # run_pipeline(start_year=2012, end_year=datetime.now().year)
