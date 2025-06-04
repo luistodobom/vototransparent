@@ -154,6 +154,20 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
 
+            # Parse proposal_category as list of integers
+            proposal_category_raw = row.get('proposal_category', '[]')
+            proposal_category_list = []
+            if pd.notna(proposal_category_raw) and str(proposal_category_raw).strip():
+                try:
+                    # Handle both string representation of list and actual list
+                    if isinstance(proposal_category_raw, str):
+                        proposal_category_list = json.loads(proposal_category_raw.replace("'", '"'))
+                    elif isinstance(proposal_category_raw, list):
+                        proposal_category_list = proposal_category_raw
+                    # Ensure all elements are integers
+                    proposal_category_list = [int(cat) for cat in proposal_category_list if str(cat).isdigit()]
+                except (json.JSONDecodeError, ValueError):
+                    proposal_category_list = []
 
             voting_breakdown_json = row.get('voting_details_json')
             current_proposal_overall_favor = 0
@@ -260,6 +274,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                         'proposal_summary_analysis': summary_analysis,
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
+                        'proposal_category_list': proposal_category_list,
                     })
             else: # No party breakdown, create a single row for the proposal
                 all_vote_details.append({
@@ -271,6 +286,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                     'proposal_summary_analysis': summary_analysis,
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
+                    'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details:
@@ -284,7 +300,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
             'vote_outcome', 'is_unanimous', 'issue_type', 'party',
             'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 
-            'proposal_summary_fiscal_impact', 'proposal_summary_colloquial'
+            'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
+            'proposal_category_list'
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -292,6 +309,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                     df[col] = 0
                 elif col == 'is_unanimous':
                     df[col] = False
+                elif col == 'proposal_category_list':
+                    df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
                 else: 

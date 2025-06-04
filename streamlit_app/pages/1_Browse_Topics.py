@@ -65,6 +65,19 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
 
+            # Parse proposal_category as list of integers
+            proposal_category_raw = row.get('proposal_category', '[]')
+            proposal_category_list = []
+            if pd.notna(proposal_category_raw) and str(proposal_category_raw).strip():
+                try:
+                    if isinstance(proposal_category_raw, str):
+                        proposal_category_list = json.loads(proposal_category_raw.replace("'", '"'))
+                    elif isinstance(proposal_category_raw, list):
+                        proposal_category_list = proposal_category_raw
+                    proposal_category_list = [int(cat) for cat in proposal_category_list if str(cat).isdigit()]
+                except (json.JSONDecodeError, ValueError):
+                    proposal_category_list = []
+
             voting_breakdown_json = row.get('voting_details_json')
             current_proposal_overall_favor = 0
             current_proposal_overall_against = 0
@@ -145,6 +158,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                         'proposal_summary_analysis': summary_analysis,
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
+                        'proposal_category_list': proposal_category_list,
                     })
             else:
                 all_vote_details.append({
@@ -156,6 +170,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     'proposal_summary_analysis': summary_analysis,
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
+                    'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
@@ -163,12 +178,14 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
         expected_cols = [
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
-            'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial'
+            'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
+            'proposal_category_list'
         ]
         for col in expected_cols:
             if col not in df.columns:
                 if col in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']: df[col] = 0
                 elif col == 'is_unanimous': df[col] = False
+                elif col == 'proposal_category_list': df[col] = []
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
                 else: df[col] = 'N/A' if col != 'hyperlink' else ''
@@ -177,6 +194,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
         df['hyperlink'] = df['hyperlink'].fillna('')
         df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
         df['authors_json_str'] = df['authors_json_str'].fillna('[]')
+        df['proposal_category_list'] = df['proposal_category_list'].fillna('').apply(lambda x: [] if x == '' else x)
         for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
             df[col_fill_empty_str] = df[col_fill_empty_str].fillna('')
         for col_to_int in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
@@ -193,13 +211,23 @@ st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
 # --- Category Filter ---
-categories = [
-    "Saúde e Cuidados Sociais", "Educação e Competências", "Defesa e Segurança Nacional",
-    "Justiça, Lei e Ordem", "Economia e Finanças", "Bem-Estar e Segurança Social",
-    "Ambiente, Agricultura e Pescas", "Energia e Clima", "Transportes e Infraestruturas",
-    "Habitação, Comunidades e Administração Local", "Negócios Estrangeiros e Cooperação Internacional",
-    "Ciência, Tecnologia e Digital"
-]
+# Category mapping from integers to names
+CATEGORY_MAPPING = {
+    0: "Saúde e Cuidados Sociais",
+    1: "Educação e Competências", 
+    2: "Defesa e Segurança Nacional",
+    3: "Justiça, Lei e Ordem",
+    4: "Economia e Finanças",
+    5: "Bem-Estar e Segurança Social",
+    6: "Ambiente, Agricultura e Pescas",
+    7: "Energia e Clima",
+    8: "Transportes e Infraestruturas",
+    9: "Habitação, Comunidades e Administração Local",
+    10: "Negócios Estrangeiros e Cooperação Internacional",
+    11: "Ciência, Tecnologia e Digital"
+}
+
+categories = list(CATEGORY_MAPPING.values())
 
 st.markdown("#### Filtrar por Categoria:")
 selected_categories = st.multiselect(
@@ -216,16 +244,18 @@ if not data_df.empty:
     filtered_topics = unique_topics.copy() # Start with all unique topics
 
     if selected_categories:
-        # Ensure 'description' and 'full_title' are strings for searching
-        filtered_topics['description_str'] = filtered_topics['description'].astype(str).str.lower()
-        filtered_topics['full_title_str'] = filtered_topics['full_title'].astype(str).str.lower()
-
-        for category in selected_categories:
-            category_lower = category.lower()
-            # AND condition: filter progressively
+        # Convert selected category names to integers
+        selected_category_ids = [
+            cat_id for cat_id, cat_name in CATEGORY_MAPPING.items() 
+            if cat_name in selected_categories
+        ]
+        
+        # Filter topics that contain ALL selected categories
+        if selected_category_ids:
             filtered_topics = filtered_topics[
-                filtered_topics['full_title_str'].str.contains(category_lower, na=False) |
-                filtered_topics['description_str'].str.contains(category_lower, na=False)
+                filtered_topics['proposal_category_list'].apply(
+                    lambda cat_list: all(cat_id in cat_list for cat_id in selected_category_ids)
+                )
             ]
     
     if not filtered_topics.empty:

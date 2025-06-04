@@ -15,7 +15,7 @@ st.set_page_config(
 # [[REPLACE THE EXISTING load_data FUNCTION WITH THE ONE DEFINED ABOVE]]
 # The load_data function is identical to the one in streamlit_app.py
 # Path adjustment for pages is handled by the default path.
-@st.cache_data
+@st.cache_data  
 def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
     final_csv_path = csv_path
     # Path adjustment logic (same considerations as in 1_Browse_Topics.py)
@@ -58,6 +58,18 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
             session_pdf_url_val = row.get('session_pdf_url', '')
 
+            # Parse proposal_category as list of integers
+            proposal_category_raw = row.get('proposal_category', '[]')
+            proposal_category_list = []
+            if pd.notna(proposal_category_raw) and str(proposal_category_raw).strip():
+                try:
+                    if isinstance(proposal_category_raw, str):
+                        proposal_category_list = json.loads(proposal_category_raw.replace("'", '"'))
+                    elif isinstance(proposal_category_raw, list):
+                        proposal_category_list = proposal_category_raw
+                    proposal_category_list = [int(cat) for cat in proposal_category_list if str(cat).isdigit()]
+                except (json.JSONDecodeError, ValueError):
+                    proposal_category_list = []
 
             voting_breakdown_json = row.get('voting_details_json')
             current_proposal_overall_favor = 0
@@ -140,6 +152,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
                         'session_pdf_url': session_pdf_url_val,
+                        'proposal_category_list': proposal_category_list,
                     })
             else:
                 all_vote_details.append({
@@ -152,6 +165,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
                     'session_pdf_url': session_pdf_url_val,
+                    'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
@@ -160,7 +174,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
-            'session_pdf_url'
+            'session_pdf_url', 'proposal_category_list'
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -168,6 +182,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                 elif col == 'is_unanimous': df[col] = False
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
+                elif col == 'proposal_category_list': df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
                 else: df[col] = 'N/A' if col not in ['hyperlink', 'session_pdf_url'] else ''
         
         for col_fill_na in ['full_title', 'description', 'vote_outcome', 'issue_type', 'party']: df[col_fill_na] = df[col_fill_na].fillna('N/A')
@@ -175,6 +190,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
         df['session_pdf_url'] = df['session_pdf_url'].fillna('')
         df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
         df['authors_json_str'] = df['authors_json_str'].fillna('[]')
+        df['proposal_category_list'] = df['proposal_category_list'].fillna('').apply(lambda x: [] if x == '' else x)
         for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
             df[col_fill_empty_str] = df[col_fill_empty_str].fillna('')
         for col_to_int in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
@@ -187,6 +203,22 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
 
 
 data_df = load_data() 
+
+# Category mapping for display
+CATEGORY_MAPPING = {
+    0: "Saúde e Cuidados Sociais",
+    1: "Educação e Competências", 
+    2: "Defesa e Segurança Nacional",
+    3: "Justiça, Lei e Ordem",
+    4: "Economia e Finanças",
+    5: "Bem-Estar e Segurança Social",
+    6: "Ambiente, Agricultura e Pescas",
+    7: "Energia e Clima",
+    8: "Transportes e Infraestruturas",
+    9: "Habitação, Comunidades e Administração Local",
+    10: "Negócios Estrangeiros e Cooperação Internacional",
+    11: "Ciência, Tecnologia e Digital"
+}
 
 # --- Get Topic ID from Session State ---
 issue_id_param = st.session_state.get("selected_issue_identifier")
@@ -247,6 +279,16 @@ if issue_id_param and not data_df.empty:
                 st.markdown(f"**Tipo de Iniciativa:** {topic_info['issue_type']}")
             if pd.notna(topic_info['issue_identifier']):
                 st.markdown(f"**Identificador:** {topic_info['issue_identifier']}")
+            
+            # Display categories
+            if 'proposal_category_list' in topic_info and topic_info['proposal_category_list']:
+                category_names = [
+                    CATEGORY_MAPPING.get(cat_id, f"Categoria {cat_id}") 
+                    for cat_id in topic_info['proposal_category_list']
+                ]
+                if category_names:
+                    st.markdown(f"**Categorias:** {', '.join(category_names)}")
+            
             if 'is_unanimous' in topic_info and pd.notna(topic_info['is_unanimous']):
                  st.markdown(f"**Votação Unânime (geral):** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
         
