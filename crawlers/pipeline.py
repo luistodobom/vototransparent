@@ -11,6 +11,10 @@ import pandas as pd
 from dotenv import load_dotenv
 import hashlib
 
+# Add Google GenAI SDK import
+from google import genai
+from google.genai import types
+
 # --- Configuration ---
 DATAFRAME_PATH = "parliament_data.csv"
 SESSION_PDF_DIR = "data/session_pdfs"
@@ -24,12 +28,10 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     print("Error: GEMINI_API_KEY not found in .env file. Please create a .env file with your API key.")
-    # You might want to exit here or raise an error depending on desired behavior
-    # For now, we'll let it proceed, but LLM calls will fail.
 
-# Gemini API Configuration
-# GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" # Changed from gemini-2.0-flash-lite for potentially better JSON handling
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent"
+# Initialize Gemini client
+genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
 # --- Utility Functions ---
 
 def init_directories():
@@ -133,53 +135,49 @@ def extract_text_from_pdf(pdf_path):
         print(f"Error extracting text from {pdf_path}: {e}")
         return None, str(e)
 
-def call_gemini_api(prompt_text, document_content=None, expect_json=False):
-    """Calls the Gemini API with the given prompt and optional document content."""
-    if not GEMINI_API_KEY:
+def call_gemini_api(prompt_text, document_path=None, expect_json=False):
+    """Calls the Gemini API with the given prompt and optional document file."""
+    if not genai_client:
         return None, "GEMINI_API_KEY not configured"
 
-    full_prompt = prompt_text
-    if document_content:
-        full_prompt = f"{prompt_text}\n\nDocument content:\n{document_content}"
+    print(f"Calling Gemini API. Prompt length: {len(prompt_text)}")
+
+    # Prepare contents array
+    contents = [prompt_text]
     
-    print(f"Calling Gemini API. Prompt length: {len(full_prompt)}")
+    # If a document is provided, upload it using the File API
+    if document_path and os.path.exists(document_path):
+        try:
+            print(f"Uploading file: {document_path}")
+            uploaded_file = genai_client.files.upload(file=document_path)
+            contents.append(uploaded_file)
+            print(f"File uploaded successfully: {uploaded_file.name}")
+        except Exception as e:
+            return None, f"File upload failed: {e}"
 
-    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
+    # Prepare generation config
+    config = {}
     if expect_json:
-        # Note: gemini-2.0-flash might not fully support responseSchema.
-        # This is an attempt; parsing will be robust.
-        payload["generationConfig"] = {
-            "responseMimeType": "application/json",
+        config = {
+            "response_mime_type": "application/json",
         }
-
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY
-    }
 
     for attempt in range(LLM_RETRY_ATTEMPTS):
         try:
-            response = requests.post(GEMINI_API_URL, json=payload, headers=headers, timeout=600)
-            response.raise_for_status()
-            result = response.json()
+            response = genai_client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=contents,
+                config=config if config else None
+            )
             
-            if not result.get("candidates"):
-                print(f"Gemini API Error: No candidates in response. Full response: {result}")
-                return None, f"No candidates in API response: {result.get('error', {}).get('message', 'Unknown error')}"
-
-            generated_text = result["candidates"][0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            generated_text = response.text
             
             if not generated_text.strip():
-                 print(f"Gemini API Warning: Empty text response. Full result: {result}")
-                 # Check for safety ratings or finish reason
-                 finish_reason = result["candidates"][0].get("finishReason")
-                 if finish_reason and finish_reason != "STOP":
-                     return None, f"API call finished with reason: {finish_reason}. Safety ratings: {result['candidates'][0].get('safetyRatings')}"
-                 return None, "Empty text response from API"
-
+                print(f"Gemini API Warning: Empty text response.")
+                return None, "Empty text response from API"
 
             if expect_json:
-                # Gemini might return JSON as a string, sometimes with ```json ... ```
+                # Clean up JSON response if needed
                 cleaned_text = generated_text.strip()
                 if cleaned_text.startswith("```json"):
                     cleaned_text = cleaned_text[7:]
@@ -192,23 +190,15 @@ def call_gemini_api(prompt_text, document_content=None, expect_json=False):
                     return parsed_json, None
                 except json.JSONDecodeError as e:
                     print(f"Error decoding JSON from Gemini API response: {e}. Response text: {generated_text}")
-                    return None, f"JSONDecodeError: {e}. Raw text: {generated_text[:500]}" # Log part of the raw text
+                    return None, f"JSONDecodeError: {e}. Raw text: {generated_text[:500]}"
             
             print("Successfully received text response from Gemini API.")
             return generated_text, None
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"Error communicating with Gemini API (attempt {attempt + 1}/{LLM_RETRY_ATTEMPTS}): {e}")
             if attempt + 1 == LLM_RETRY_ATTEMPTS:
-                return None, f"RequestException after {LLM_RETRY_ATTEMPTS} attempts: {e}"
-        except json.JSONDecodeError as e: # If response itself is not JSON
-            print(f"Error decoding API outer response (attempt {attempt + 1}/{LLM_RETRY_ATTEMPTS}): {e}")
-            if attempt + 1 == LLM_RETRY_ATTEMPTS:
-                return None, f"Outer JSONDecodeError after {LLM_RETRY_ATTEMPTS} attempts: {e}"
-        except Exception as e:
-            print(f"An unexpected error occurred with Gemini API (attempt {attempt + 1}/{LLM_RETRY_ATTEMPTS}): {e}")
-            if attempt + 1 == LLM_RETRY_ATTEMPTS:
-                return None, f"Unexpected API error after {LLM_RETRY_ATTEMPTS} attempts: {e}"
+                return None, f"API error after {LLM_RETRY_ATTEMPTS} attempts: {e}"
         
         time.sleep(LLM_RETRY_DELAY)
     return None, f"Failed after {LLM_RETRY_ATTEMPTS} attempts."
@@ -315,16 +305,7 @@ Example of a single element in the JSON array:
 If you cannot find a specific piece of information for a proposal (e.g. a link), use null for its value. Ensure the output is a valid JSON array.
 """
     
-    # Read PDF as raw bytes and convert to UTF-8 dump
-    try:
-        with open(session_pdf_path, 'rb') as f:
-            pdf_raw_bytes = f.read()
-        # Convert to UTF-8 string with error handling to create the "dump" effect
-        pdf_utf8_dump = pdf_raw_bytes.decode('utf-8', errors='replace')
-    except Exception as e:
-        return None, f"Failed to read PDF as raw bytes: {e}"
-    
-    extracted_data, error = call_gemini_api(prompt, document_content=pdf_utf8_dump, expect_json=True)
+    extracted_data, error = call_gemini_api(prompt, document_path=session_pdf_path, expect_json=True)
     if error:
         return None, f"LLM API call failed: {error}"
     if not isinstance(extracted_data, list): # Expecting a list of proposals
@@ -438,7 +419,7 @@ def fetch_proposal_details_and_download_doc(proposal_page_url, download_dir):
     }
 
 # --- Script 4: Proposal Summary (Summarize Proposal Document with LLM) ---
-def summarize_proposal_text(proposal_document_text):
+def summarize_proposal_text(proposal_document_path):
     prompt = """Provide this answer in Portuguese from Portugal: This is a government proposal that was voted on in the Portuguese Parliament in Portugal and so is full of legal language. Analyze this document and provide a structured JSON response with the following fields:
 
 1. "general_summary": A general summary of the proposal, avoiding legalese and using normal vocabulary
@@ -470,7 +451,7 @@ Example format:
   "categories": ["Economia e Finanças", "Bem-Estar e Segurança Social"]
 }
 """
-    summary_data, error = call_gemini_api(prompt, document_content=proposal_document_text, expect_json=True)
+    summary_data, error = call_gemini_api(prompt, document_path=proposal_document_path, expect_json=True)
     if error:
         return None, f"LLM API call failed for summary: {error}"
     
@@ -719,26 +700,21 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                df.loc[row_idx, 'proposal_doc_download_status'] == 'Success' and \
                (pd.isna(df.loc[row_idx, 'proposal_summarize_status']) or df.loc[row_idx, 'proposal_summarize_status'] != 'Success'):
                 
-                proposal_doc_text, prop_text_err = extract_text_from_pdf(proposal_doc_path)
-                if prop_text_err:
-                    df.loc[row_idx, 'proposal_summarize_status'] = f'Text Extraction Failed: {prop_text_err}'
-                    df.loc[row_idx, 'last_error_message'] = prop_text_err
-                    df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (Proposal Text Extraction)'
+                # Use the PDF file path directly instead of extracting text first
+                summary_data, summary_err = summarize_proposal_text(proposal_doc_path)
+                if summary_err:
+                    df.loc[row_idx, 'proposal_summarize_status'] = f'LLM Summary Failed: {summary_err}'
+                    df.loc[row_idx, 'last_error_message'] = summary_err
+                    df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (LLM Summary)'
                 else:
-                    summary_data, summary_err = summarize_proposal_text(proposal_doc_text)
-                    if summary_err:
-                        df.loc[row_idx, 'proposal_summarize_status'] = f'LLM Summary Failed: {summary_err}'
-                        df.loc[row_idx, 'last_error_message'] = summary_err
-                        df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (LLM Summary)'
-                    else:
-                        # Store individual summary fields in separate columns
-                        df.loc[row_idx, 'proposal_summary_general'] = summary_data['general_summary']
-                        df.loc[row_idx, 'proposal_summary_analysis'] = summary_data['critical_analysis']
-                        df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
-                        df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
-                        df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
-                        df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
-                        df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
+                    # Store individual summary fields in separate columns
+                    df.loc[row_idx, 'proposal_summary_general'] = summary_data['general_summary']
+                    df.loc[row_idx, 'proposal_summary_analysis'] = summary_data['critical_analysis']
+                    df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
+                    df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
+                    df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
+                    df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
+                    df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
                 df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
             elif df.loc[row_idx, 'proposal_details_scrape_status'] == 'Success' and pd.isna(proposal_doc_path):
                  # Scraped details, but no proposal doc was found/downloaded
