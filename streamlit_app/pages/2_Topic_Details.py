@@ -28,7 +28,7 @@ PARTY_METADATA = {
     "PAN": {"mps": 1, "color": "#008000"},    # Green
     "L": {"mps": 1, "color": "#20B2AA"}       # Light Sea Green
 }
-ORDERED_PARTIES = ["BE", "PCP", "L", "PS", "PAN", "IL", "PSD", "CH"] # Left to Right overall
+ORDERED_PARTIES = ["PCP", "BE",  "L", "PS", "PAN", "PSD", "IL", "CH"] # Left to Right overall
 
 # Define left/right groupings for abstention layout (must cover all parties in ORDERED_PARTIES)
 # PAN is often center/center-left; placing with left for this layout.
@@ -40,7 +40,7 @@ RIGHT_PARTIES_FOR_LAYOUT = ["IL", "PSD", "CH"]
 DEFAULT_WEDGE_RADIUS = 1.0
 DEFAULT_WEDGE_WIDTH = 0.35 
 FAVOR_ALPHA = 1.0  # Opaque
-CONTRA_ALPHA = 0.4 # More transparent for 'against'
+CONTRA_ALPHA = 0.2 # More transparent for 'against'
 ABSTAIN_COLOR = "#A9A9A9" # DarkGray for abstentions
 ABSTAIN_ALPHA = 0.7
 
@@ -67,6 +67,9 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
     ax.set_ylim(-1.3, 1.3) 
     ax.set_aspect('equal')
     ax.axis('off')
+
+    # Add horizontal line at y=0 to separate top and bottom
+    ax.axhline(0, color='black', linewidth=0.75, linestyle='-') # MODIFIED: Added horizontal line
 
     # --- Draw Top Semi-circle (Active Votes: Favor/Contra) ---
     if total_mps_active > 0:
