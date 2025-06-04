@@ -798,19 +798,19 @@ def summarize_proposal_text(proposal_document_path):
 2. "critical_analysis": Think critically about the document and point out inconsistencies if there are any, and if not show how the implementation details align with the goal
 3. "fiscal_impact": An educated estimate if the proposal will increase or decrease government spending and increase or decrease government revenue as well, and what the net effect may be
 4. "colloquial_summary": Another summary, but in more colloquial language
-5. "categories": An array of one or more categories that this proposal fits into. Choose from the following categories:
-   - "Saude e Cuidados Sociais"
-   - "Educacao e Competências"
-   - "Defesa e Segurança Nacional"
-   - "Justica, Lei e Ordem"
-   - "Economia e Financas"
-   - "Bem-Estar e Seguranca Social"
-   - "Ambiente, Agricultura e Pescas"
-   - "Energia e Clima"
-   - "Transportes e Infraestruturas"
-   - "Habitacao, Comunidades e Administracao Local"
-   - "Negocios Estrangeiros e Cooperacao Internacional"
-   - "Ciencia, Tecnologia e Digital"
+5. "categories": An array of one or more categories that this proposal fits into. Choose from the following categories, only output it's index in an array format, do not output the category name itself:
+   0 - "Saude e Cuidados Sociais"
+   1 - "Educacao e Competências"
+   2 - "Defesa e Segurança Nacional"
+   3 - "Justica, Lei e Ordem"
+   4 - "Economia e Financas"
+   5 - "Bem-Estar e Seguranca Social"
+   6 - "Ambiente, Agricultura e Pescas"
+   7 - "Energia e Clima"
+   8 - "Transportes e Infraestruturas"
+   9 - "Habitacao, Comunidades e Administracao Local"
+   10 - "Negocios Estrangeiros e Cooperacao Internacional"
+   11 - "Ciencia, Tecnologia e Digital"
 
 Return only a valid JSON object with these 5 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
 
@@ -820,7 +820,7 @@ Example format:
   "critical_analysis": "...",
   "fiscal_impact": "...",
   "colloquial_summary": "...",
-  "categories": ["Economia e Finanças", "Bem-Estar e Segurança Social"]
+  "categories": [4, 5]
 }
 """
     summary_data, error = call_gemini_api(prompt, document_path=proposal_document_path, expect_json=True)
@@ -1121,6 +1121,6 @@ if __name__ == "__main__":
     # Example: Process data for the last 2 years, up to 10 session PDFs
     # For a full run, you might remove max_sessions_to_process or set it higher
     # And adjust start_year as needed.
-    run_pipeline(start_year=2025, end_year=2025, max_sessions_to_process=None) 
+    run_pipeline(start_year=2023, end_year=2023, max_sessions_to_process=None) 
     # To run for all available years from 2012 (as per original script 1 default):
     # run_pipeline(start_year=2012, end_year=datetime.now().year)
