@@ -242,9 +242,11 @@ st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
 # --- Filters Section ---
-col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+# col1, col2, col3, col4 = st.columns([2, 1, 1, 1]) # Old column definition
+col_category, col_year, col_month = st.columns([3, 1, 1]) # New column definition
 
-with col1:
+# with col1: # Old column for categories
+with col_category: # New column for categories, now wider
     st.markdown("#### Filtrar por Categoria:")
     selected_categories = st.multiselect(
         label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
@@ -252,15 +254,10 @@ with col1:
         label_visibility="collapsed"
     )
 
-with col2:
-    st.markdown("#### Ordenação:")
-    sort_order = st.selectbox(
-        "Ordem das datas:",
-        options=["Mais recente primeiro", "Mais antigo primeiro"],
-        index=0
-    )
+# The col2 for sort_order is removed.
 
-with col3:
+# with col3: # Old column for year
+with col_year: # New column for year
     st.markdown("#### Ano:")
     # Get available years from data
     available_years = []
@@ -270,12 +267,14 @@ with col3:
             available_years = sorted(valid_dates['session_date'].dt.year.unique(), reverse=True)
     
     selected_year = st.selectbox(
-        "Filtrar por ano:",
+        label="Filtro Ano", # Changed label, will be hidden by label_visibility
         options=["Todos"] + [str(year) for year in available_years],
-        index=0
+        index=0,
+        label_visibility="collapsed" # Added to use the markdown title as the label
     )
 
-with col4:
+# with col4: # Old column for month
+with col_month: # New column for month
     st.markdown("#### Mês:")
     months = {
         "Todos": None,
@@ -285,9 +284,10 @@ with col4:
     }
     
     selected_month = st.selectbox(
-        "Filtrar por mês:",
+        label="Filtro Mês", # Changed label, will be hidden by label_visibility
         options=list(months.keys()),
-        index=0
+        index=0,
+        label_visibility="collapsed" # Added to use the markdown title as the label
     )
 
 st.markdown("---")
@@ -326,7 +326,8 @@ if not data_df.empty:
 
     # Sort by date
     if not filtered_topics.empty:
-        ascending_order = sort_order == "Mais antigo primeiro"
+        # ascending_order = sort_order == "Mais antigo primeiro" # Old sorting logic
+        ascending_order = False # Always sort newest first
         filtered_topics = filtered_topics.sort_values(
             by='session_date', 
             ascending=ascending_order,
