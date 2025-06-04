@@ -16,9 +16,8 @@ st.set_page_config(
 # The load_data function is identical to the one in streamlit_app.py
 # Path adjustment for pages is handled by the default path.
 @st.cache_data  
-def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
+def load_data(csv_path="data/parliament_data.csv"):
     final_csv_path = csv_path
-    # Path adjustment logic (same considerations as in 1_Browse_Topics.py)
     if not os.path.exists(final_csv_path):
         alternative_path = os.path.join("..", csv_path) 
         if os.path.exists(alternative_path):
@@ -57,6 +56,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
             session_pdf_url_val = row.get('session_pdf_url', '')
+            session_date_val = row.get('session_date', '')
 
             # Parse proposal_category as list of integers
             proposal_category_raw = row.get('proposal_category', '[]')
@@ -126,8 +126,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                 elif current_proposal_overall_favor == current_proposal_overall_against and current_proposal_overall_favor > 0: vote_outcome_str = "Empate"
                 elif current_proposal_overall_abstention > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_against == 0:
                     all_abstained = all(p_vote['votes_favor'] == 0 and p_vote['votes_against'] == 0 for p_vote in proposal_party_votes_list)
-                    if all_abstained: vote_outcome_str = "Abstenção Geral"; is_unanimous_bool = True # Unanimous abstention
-                    else: vote_outcome_str = "Resultado misto" # Should not happen
+                    if all_abstained: vote_outcome_str = "Abstenção Geral"; is_unanimous_bool = True
+                    else: vote_outcome_str = "Resultado misto"
                 else:
                     if current_proposal_overall_favor == 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
                         total_non_voters = sum(pvd.get('votes_not_voted',0) for pvd in proposal_party_votes_list)
@@ -152,6 +152,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
                         'session_pdf_url': session_pdf_url_val,
+                        'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                     })
             else:
@@ -165,16 +166,24 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
                     'session_pdf_url': session_pdf_url_val,
+                    'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
         df = pd.DataFrame(all_vote_details)
+        
+        # Ensure session_date column exists and convert to datetime
+        if 'session_date' in df.columns:
+            df['session_date'] = pd.to_datetime(df['session_date'], errors='coerce')
+        else:
+            df['session_date'] = pd.NaT
+            
         expected_cols = [
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
-            'session_pdf_url', 'proposal_category_list'
+            'session_pdf_url', 'session_date', 'proposal_category_list'
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -237,6 +246,11 @@ if issue_id_param and not data_df.empty:
         # --- Summary Section ---
         with st.container(border=True): 
             st.subheader(f"Resultado Geral: {topic_info['vote_outcome'].upper()}")
+            
+            # Display session date if available
+            if pd.notna(topic_info.get('session_date')):
+                date_formatted = pd.to_datetime(topic_info['session_date']).strftime("%d/%m/%Y")
+                st.markdown(f"**Data da Votação:** {date_formatted}")
 
             parties_favor_summary = []
             parties_against_summary = []

@@ -110,19 +110,9 @@ st.markdown("""
 
 # --- Data Loading ---
 @st.cache_data
-def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
-    final_csv_path = csv_path
-    # Note: Path adjustment logic for 'pages' is not strictly needed here if streamlit_app.py is not in 'pages'
-    # However, to keep the function identical, it can remain.
-    # Or, simplify it for this specific file if it's always run from a known location relative to data.
-    # Assuming streamlit_app.py is in 'streamlit_app/' and data is in 'data/', then '../data/' is correct.
-
-    if not os.path.exists(final_csv_path):
-        st.error(f"Error: The data file '{os.path.abspath(final_csv_path)}' was not found. "
-                 f"Working directory: '{os.getcwd()}'. Please ensure it's generated.")
-        return pd.DataFrame()
+def load_data(csv_path="data/parliament_data.csv"):
     try:
-        raw_df = pd.read_csv(final_csv_path)
+        raw_df = pd.read_csv(csv_path)
         all_vote_details = []
 
         def extract_bid(url):
@@ -131,18 +121,15 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
             match = re.search(r'BID=(\d+)', url)
             if match:
                 return match.group(1)
-            # Fallback for other link types if necessary, or return None
-            # e.g. DetalheProjetoVoto.aspx?BID=178093
             match_alt = re.search(r'Detalhe(?:Iniciativa|ProjetoVoto)\.aspx\?BID=(\d+)', str(url))
             if match_alt:
                 return match_alt.group(1)
             return None
-
+        
         for index, row in raw_df.iterrows(): # Use index for fallback id
             issue_id_str = extract_bid(row.get('proposal_gov_link'))
             if issue_id_str is None:
                 issue_id_str = row.get('proposal_name_from_session', f"fallback_id_{index}")
-
 
             title = row.get('proposal_name_from_session', 'Título não disponível.')
             description_text = row.get('proposal_summary_general', 'Descrição não disponível.')
@@ -153,6 +140,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
             summary_analysis = str(row.get('proposal_summary_analysis', '')) if pd.notna(row.get('proposal_summary_analysis')) else ''
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
+            session_pdf_url_val = row.get('session_pdf_url', '')
+            session_date_val = row.get('session_date', '')
 
             # Parse proposal_category as list of integers
             proposal_category_raw = row.get('proposal_category', '[]')
@@ -255,12 +244,10 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                              vote_outcome_str = "Ausência de votação registada"
                         else:
                              vote_outcome_str = "Sem votos expressos (Favor, Contra, Abstenção)"
-
-                    else: # Some votes but not fitting simple categories
-                        vote_outcome_str = "Resultado misto"
+                    else:
+                        vote_outcome_str = "Resultado misto"                        
             elif not valid_breakdown_found and pd.notna(voting_breakdown_json) and voting_breakdown_json.strip():
                  vote_outcome_str = "Dados de votação malformados"
-
 
             if proposal_party_votes_list:
                 for p_vote in proposal_party_votes_list:
@@ -274,9 +261,11 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                         'proposal_summary_analysis': summary_analysis,
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
+                        'session_pdf_url': session_pdf_url_val,
+                        'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                     })
-            else: # No party breakdown, create a single row for the proposal
+            else:
                 all_vote_details.append({
                     'issue_identifier': issue_id_str, 'full_title': title, 'description': description_text,
                     'hyperlink': hyperlink_url, 'vote_outcome': vote_outcome_str, 'is_unanimous': is_unanimous_bool,
@@ -286,62 +275,33 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path
                     'proposal_summary_analysis': summary_analysis,
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
+                    'session_pdf_url': session_pdf_url_val,
+                    'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details:
-            st.info("No vote data could be processed from the CSV file. It might be empty or contain no valid vote entries.")
+            st.info("No vote data could be processed.")
             return pd.DataFrame()
-
+        
         df = pd.DataFrame(all_vote_details)
-
-        expected_cols = [
-            'issue_identifier', 'full_title', 'description', 'hyperlink',
-            'vote_outcome', 'is_unanimous', 'issue_type', 'party',
-            'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
-            'authors_json_str', 'proposal_summary_analysis', 
-            'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
-            'proposal_category_list'
-        ]
-        for col in expected_cols:
-            if col not in df.columns:
-                if col in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
-                    df[col] = 0
-                elif col == 'is_unanimous':
-                    df[col] = False
-                elif col == 'proposal_category_list':
-                    df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
-                elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
-                    df[col] = '' if col != 'authors_json_str' else '[]'
-                else: 
-                    df[col] = 'N/A' if col != 'hyperlink' else ''
         
-        for col_fill_na in ['full_title', 'description', 'vote_outcome', 'issue_type', 'party']:
-            df[col_fill_na] = df[col_fill_na].fillna('N/A')
-        df['hyperlink'] = df['hyperlink'].fillna('')
-        df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
-        df['authors_json_str'] = df['authors_json_str'].fillna('[]')
-        for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
-            df[col_fill_empty_str] = df[col_fill_empty_str].fillna('')
-
-        for col_to_int in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
-            df[col_to_int] = pd.to_numeric(df[col_to_int], errors='coerce').fillna(0).astype(int)
-        
-        # Ensure issue_identifier is string
-        df['issue_identifier'] = df['issue_identifier'].astype(str)
-
+        # Ensure session_date column exists and convert to datetime
+        if 'session_date' in df.columns:
+            df['session_date'] = pd.to_datetime(df['session_date'], errors='coerce')
+        else:
+            df['session_date'] = pd.NaT
+            
         return df
 
     except FileNotFoundError: 
-        st.error(f"Error: The data file '{os.path.abspath(final_csv_path)}' was not found after checks.")
+        st.error(f"Error: Data file '{csv_path}' not found.")
         return pd.DataFrame()
     except pd.errors.EmptyDataError:
-        st.error(f"Error: The data file '{final_csv_path}' is empty.")
+        st.error(f"Error: Data file '{csv_path}' is empty.")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"An unexpected error occurred while loading data from '{final_csv_path}': {e}")
-        # import traceback
-        # st.error(traceback.format_exc()) # For more detailed error during development
+        st.error(f"Error loading data: {e}")
         return pd.DataFrame()
 
 
@@ -403,41 +363,96 @@ if not data_df.empty:
         ]
 
         if not results.empty:
-            st.markdown(f"**Resultados da pesquisa para \"{search_query}\":**") # Simpler subheader
-            for _, row in results.iterrows():
-                # Use a simpler container, the CSS will style it
-                with st.container(): # Removed border=True, CSS handles it
-                    col1, col2 = st.columns([3, 1]) # Column for title and button
-                    with col1:
-                        st.markdown(f"**{row['full_title']}**")
-                        if pd.notna(row['description']):
-                            st.markdown(f"_{row['description']}_") # Display general description
-                        if pd.notna(row['issue_identifier']):
-                            st.caption(f"ID: {row['issue_identifier']}")
-                        if pd.notna(row['vote_outcome']):
-                             st.caption(f"Resultado: {row['vote_outcome']}")
+            st.markdown(f"**Resultados da pesquisa para \"{search_query}\":**")
+            
+            # Sort results by date (newest first) if session_date is available
+            if 'session_date' in results.columns:
+                results = results.sort_values(by='session_date', ascending=False, na_position='last')
+            
+            # Group results by date for display
+            if 'session_date' in results.columns:
+                grouped_results = {}
+                for _, row in results.iterrows():
+                    date_key = row['session_date']
+                    if pd.isna(date_key):
+                        date_str = "Data não disponível"
+                    else:
+                        date_str = date_key.strftime("%d/%m/%Y")
+                    
+                    if date_str not in grouped_results:
+                        grouped_results[date_str] = []
+                    grouped_results[date_str].append(row)
 
-                    with col2:
-                         # Button to navigate, styled by CSS
-                        if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                            st.session_state.selected_issue_identifier = row['issue_identifier']
-                            st.switch_page("pages/2_Topic_Details.py")
+                # Display grouped results
+                for date_str, results_for_date in grouped_results.items():
+                    st.markdown(f"### {date_str}")
+                    
+                    for row in results_for_date:
+                        with st.container():
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                st.markdown(f"**{row['full_title']}**")
+                                if pd.notna(row['description']):
+                                    st.markdown(f"_{row['description']}_")
+                                if pd.notna(row['issue_identifier']):
+                                    st.caption(f"ID: {row['issue_identifier']}")
+                                if pd.notna(row['vote_outcome']):
+                                     st.caption(f"Resultado: {row['vote_outcome']}")
 
-                    # Expander for other descriptions
-                    with st.expander("Mais detalhes da proposta"):
-                        if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
-                            st.markdown("**Análise:**")
-                            st.markdown(row['proposal_summary_analysis'])
-                        if pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip():
-                            st.markdown("**Impacto Fiscal:**")
-                            st.markdown(row['proposal_summary_fiscal_impact'])
-                        if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
-                            st.markdown("**Versão Coloquial:**")
-                            st.markdown(row['proposal_summary_colloquial'])
-                        if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or \
-                                (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or \
-                                (pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip())):
-                            st.markdown("Não há detalhes adicionais disponíveis.")
+                            with col2:
+                                if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
+                                    st.session_state.selected_issue_identifier = row['issue_identifier']
+                                    st.switch_page("pages/2_Topic_Details.py")
+
+                            # Expander for other descriptions
+                            with st.expander("Mais detalhes da proposta"):
+                                if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
+                                    st.markdown("**Análise:**")
+                                    st.markdown(row['proposal_summary_analysis'])
+                                if pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip():
+                                    st.markdown("**Impacto Fiscal:**")
+                                    st.markdown(row['proposal_summary_fiscal_impact'])
+                                if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
+                                    st.markdown("**Versão Coloquial:**")
+                                    st.markdown(row['proposal_summary_colloquial'])
+                                if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
+                                        (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
+                                        (pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip())):
+                                    st.markdown("Não há detalhes adicionais disponíveis.")
+            else:
+                # Fallback to original display if no session_date
+                for _, row in results.iterrows():
+                    with st.container():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**{row['full_title']}**")
+                            if pd.notna(row['description']):
+                                st.markdown(f"_{row['description']}_")
+                            if pd.notna(row['issue_identifier']):
+                                st.caption(f"ID: {row['issue_identifier']}")
+                            if pd.notna(row['vote_outcome']):
+                                 st.caption(f"Resultado: {row['vote_outcome']}")
+
+                        with col2:
+                            if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
+                                st.session_state.selected_issue_identifier = row['issue_identifier']
+                                st.switch_page("pages/2_Topic_Details.py")
+
+                        # Expander for other descriptions
+                        with st.expander("Mais detalhes da proposta"):
+                            if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
+                                st.markdown("**Análise:**")
+                                st.markdown(row['proposal_summary_analysis'])
+                            if pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip():
+                                st.markdown("**Impacto Fiscal:**")
+                                st.markdown(row['proposal_summary_fiscal_impact'])
+                            if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
+                                st.markdown("**Versão Coloquial:**")
+                                st.markdown(row['proposal_summary_colloquial'])
+                            if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
+                                    (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
+                                    (pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip())):
+                                st.markdown("Não há detalhes adicionais disponíveis.")
         else:
             st.info(f"Nenhuma votação encontrada para \"{search_query}\".") # Simpler message
     

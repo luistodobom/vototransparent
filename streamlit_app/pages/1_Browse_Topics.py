@@ -11,6 +11,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# Category mapping for display
+CATEGORY_MAPPING = {
+    0: "Saúde e Cuidados Sociais",
+    1: "Educação e Competências", 
+    2: "Defesa e Segurança Nacional",
+    3: "Justiça, Lei e Ordem",
+    4: "Economia e Finanças",
+    5: "Bem-Estar e Segurança Social",
+    6: "Ambiente, Agricultura e Pescas",
+    7: "Energia e Clima",
+    8: "Transportes e Infraestruturas",
+    9: "Habitação, Comunidades e Administração Local",
+    10: "Negócios Estrangeiros e Cooperação Internacional",
+    11: "Ciência, Tecnologia e Digital"
+}
+
+categories = list(CATEGORY_MAPPING.values())
+
 # --- Data Loading ---
 @st.cache_data
 def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
@@ -64,6 +82,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             summary_analysis = str(row.get('proposal_summary_analysis', '')) if pd.notna(row.get('proposal_summary_analysis')) else ''
             summary_fiscal = str(row.get('proposal_summary_fiscal_impact', '')) if pd.notna(row.get('proposal_summary_fiscal_impact')) else ''
             summary_colloquial = str(row.get('proposal_summary_colloquial', '')) if pd.notna(row.get('proposal_summary_colloquial')) else ''
+            session_pdf_url_val = row.get('session_pdf_url', '')
+            session_date_val = row.get('session_date', '')
 
             # Parse proposal_category as list of integers
             proposal_category_raw = row.get('proposal_category', '[]')
@@ -158,6 +178,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                         'proposal_summary_analysis': summary_analysis,
                         'proposal_summary_fiscal_impact': summary_fiscal,
                         'proposal_summary_colloquial': summary_colloquial,
+                        'session_pdf_url': session_pdf_url_val,
+                        'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                     })
             else:
@@ -170,11 +192,20 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     'proposal_summary_analysis': summary_analysis,
                     'proposal_summary_fiscal_impact': summary_fiscal,
                     'proposal_summary_colloquial': summary_colloquial,
+                    'session_pdf_url': session_pdf_url_val,
+                    'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
         df = pd.DataFrame(all_vote_details)
+        
+        # Ensure session_date column exists and convert to datetime
+        if 'session_date' in df.columns:
+            df['session_date'] = pd.to_datetime(df['session_date'], errors='coerce')
+        else:
+            df['session_date'] = pd.NaT
+
         expected_cols = [
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
@@ -210,92 +241,153 @@ data_df = load_data()
 st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
-# --- Category Filter ---
-# Category mapping from integers to names
-CATEGORY_MAPPING = {
-    0: "Saúde e Cuidados Sociais",
-    1: "Educação e Competências", 
-    2: "Defesa e Segurança Nacional",
-    3: "Justiça, Lei e Ordem",
-    4: "Economia e Finanças",
-    5: "Bem-Estar e Segurança Social",
-    6: "Ambiente, Agricultura e Pescas",
-    7: "Energia e Clima",
-    8: "Transportes e Infraestruturas",
-    9: "Habitação, Comunidades e Administração Local",
-    10: "Negócios Estrangeiros e Cooperação Internacional",
-    11: "Ciência, Tecnologia e Digital"
-}
+# --- Filters Section ---
+col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 
-categories = list(CATEGORY_MAPPING.values())
+with col1:
+    st.markdown("#### Filtrar por Categoria:")
+    selected_categories = st.multiselect(
+        label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
+        options=categories,
+        label_visibility="collapsed"
+    )
 
-st.markdown("#### Filtrar por Categoria:")
-selected_categories = st.multiselect(
-    label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
-    options=categories,
-    label_visibility="collapsed" # More compact
-)
+with col2:
+    st.markdown("#### Ordenação:")
+    sort_order = st.selectbox(
+        "Ordem das datas:",
+        options=["Mais recente primeiro", "Mais antigo primeiro"],
+        index=0
+    )
+
+with col3:
+    st.markdown("#### Ano:")
+    # Get available years from data
+    available_years = []
+    if not data_df.empty and 'session_date' in data_df.columns:
+        valid_dates = data_df.dropna(subset=['session_date'])
+        if not valid_dates.empty:
+            available_years = sorted(valid_dates['session_date'].dt.year.unique(), reverse=True)
+    
+    selected_year = st.selectbox(
+        "Filtrar por ano:",
+        options=["Todos"] + [str(year) for year in available_years],
+        index=0
+    )
+
+with col4:
+    st.markdown("#### Mês:")
+    months = {
+        "Todos": None,
+        "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
+        "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
+        "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
+    }
+    
+    selected_month = st.selectbox(
+        "Filtrar por mês:",
+        options=list(months.keys()),
+        index=0
+    )
+
 st.markdown("---")
 
 if not data_df.empty:
     # Get unique topics based on issue_identifier, keeping the first occurrence for title and outcome
     unique_topics = data_df.drop_duplicates(subset=['issue_identifier'])
 
-    filtered_topics = unique_topics.copy() # Start with all unique topics
+    filtered_topics = unique_topics.copy()
 
+    # Apply category filter
     if selected_categories:
-        # Convert selected category names to integers
         selected_category_ids = [
             cat_id for cat_id, cat_name in CATEGORY_MAPPING.items() 
             if cat_name in selected_categories
         ]
         
-        # Filter topics that contain ALL selected categories
         if selected_category_ids:
             filtered_topics = filtered_topics[
                 filtered_topics['proposal_category_list'].apply(
                     lambda cat_list: all(cat_id in cat_list for cat_id in selected_category_ids)
                 )
             ]
+
+    # Apply date filters
+    if selected_year != "Todos":
+        filtered_topics = filtered_topics[
+            filtered_topics['session_date'].dt.year == int(selected_year)
+        ]
     
+    if selected_month != "Todos":
+        month_num = months[selected_month]
+        filtered_topics = filtered_topics[
+            filtered_topics['session_date'].dt.month == month_num
+        ]
+
+    # Sort by date
     if not filtered_topics.empty:
-        # Optional: sort by title or identifier
-        # filtered_topics = filtered_topics.sort_values(by='full_title') 
+        ascending_order = sort_order == "Mais antigo primeiro"
+        filtered_topics = filtered_topics.sort_values(
+            by='session_date', 
+            ascending=ascending_order,
+            na_position='last'
+        )
 
-        for _, topic_row in filtered_topics.iterrows():
-            with st.container(border=True):
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.markdown(f"#### {topic_row['full_title']}")
-                    if pd.notna(topic_row['description']):
-                        st.markdown(f"_{topic_row['description']}_") # Display general description
-                    if pd.notna(topic_row['issue_identifier']):
-                        st.caption(f"Identificador: {topic_row['issue_identifier']}")
-                    if pd.notna(topic_row['issue_type']):
-                        st.caption(f"Tipo: {topic_row['issue_type']}")
-                with col2:
-                    if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
-                        st.session_state.selected_issue_identifier = topic_row['issue_identifier']
-                        st.switch_page("pages/2_Topic_Details.py")
-                st.markdown(f"**Resultado da Votação:** {topic_row.get('vote_outcome', 'N/A')}")
-                # Expander for other descriptions
-                with st.expander("Mais detalhes da proposta"):
-                    if pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip():
-                        st.markdown("**Análise:**")
-                        st.markdown(topic_row['proposal_summary_analysis'])
-                    if pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip():
-                        st.markdown("**Impacto Fiscal:**")
-                        st.markdown(topic_row['proposal_summary_fiscal_impact'])
-                    if pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip():
-                        st.markdown("**Versão Coloquial:**")
-                        st.markdown(topic_row['proposal_summary_colloquial'])
-                    if not ((pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip()) or 
-                            (pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip()) or 
-                            (pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip())):
-                        st.markdown("Não há detalhes adicionais disponíveis.")
+        # Group by date for display
+        if not filtered_topics.empty:
+            # Group topics by session_date
+            grouped_topics = {}
+            for _, topic_row in filtered_topics.iterrows():
+                date_key = topic_row['session_date']
+                if pd.isna(date_key):
+                    date_str = "Data não disponível"
+                else:
+                    date_str = date_key.strftime("%d/%m/%Y")
+                
+                if date_str not in grouped_topics:
+                    grouped_topics[date_str] = []
+                grouped_topics[date_str].append(topic_row)
 
+            # Display grouped topics
+            for date_str, topics_for_date in grouped_topics.items():
+                st.markdown(f"### {date_str}")
+                
+                for topic_row in topics_for_date:
+                    with st.container(border=True):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"#### {topic_row['full_title']}")
+                            if pd.notna(topic_row['description']):
+                                st.markdown(f"_{topic_row['description']}_")
+                            if pd.notna(topic_row['issue_identifier']):
+                                st.caption(f"Identificador: {topic_row['issue_identifier']}")
+                            if pd.notna(topic_row['issue_type']):
+                                st.caption(f"Tipo: {topic_row['issue_type']}")
+                        with col2:
+                            if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
+                                st.session_state.selected_issue_identifier = topic_row['issue_identifier']
+                                st.switch_page("pages/2_Topic_Details.py")
+                        st.markdown(f"**Resultado da Votação:** {topic_row.get('vote_outcome', 'N/A')}")
+                        
+                        # Expander for other descriptions
+                        with st.expander("Mais detalhes da proposta"):
+                            if pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip():
+                                st.markdown("**Análise:**")
+                                st.markdown(topic_row['proposal_summary_analysis'])
+                            if pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip():
+                                st.markdown("**Impacto Fiscal:**")
+                                st.markdown(topic_row['proposal_summary_fiscal_impact'])
+                            if pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip():
+                                st.markdown("**Versão Coloquial:**")
+                                st.markdown(topic_row['proposal_summary_colloquial'])
+                            if not ((pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip()) or 
+                                    (pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip()) or 
+                                    (pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip())):
+                                st.markdown("Não há detalhes adicionais disponíveis.")
+        else:
+            st.info("Não foram encontradas votações para os filtros selecionados.")
     else:
-        st.info("Não foram encontradas votações para os filtros selecionados." if selected_categories else "Não foram encontradas votações para listar.")
+        st.info("Não foram encontradas votações para os filtros selecionados.")
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro.")
 
