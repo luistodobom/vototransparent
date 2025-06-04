@@ -61,8 +61,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
         return None
 
     total_mps_active = sum(p["mps"] for p in active_parties_data)
-    # total_mps_abstain_neutral = sum(p["mps"] for p in abstain_neutral_parties_data) # Still useful for legend
-
+    
     fig, ax = plt.subplots(figsize=(10, 6.5)) 
     ax.set_xlim(-1.3, 1.3) 
     ax.set_ylim(-1.3, 1.3) 
@@ -71,7 +70,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
 
     # --- Draw Top Semi-circle (Active Votes: Favor/Contra) ---
     if total_mps_active > 0:
-        current_angle_deg_top = 180  
+        current_angle_deg_top = 180.0
         for party_data in active_parties_data: 
             party_name = party_data["name"]
             party_mps = party_data["mps"]
@@ -106,7 +105,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
                     ha='center', va='center', fontsize=7,
                     path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
-            current_angle_deg_top -= angle_span_deg
+            current_angle_deg_top = start_wedge_angle_deg # Corrected from -= angle_span_deg
 
     # --- Draw Bottom Arcs (Abstaining/Neutral Votes) ---
     abstain_left_to_draw = sorted(
@@ -120,53 +119,69 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
     
     total_mps_abstain_left = sum(p["mps"] for p in abstain_left_to_draw)
     total_mps_abstain_right = sum(p["mps"] for p in abstain_right_to_draw)
+    total_mps_all_abstain = total_mps_abstain_left + total_mps_abstain_right
+    
+    MAX_ABSTAIN_ANGLE_CONCEPTUAL_TOTAL = 90.0 # Conceptual total for proportionality
+    MAX_ANGLE_PER_SIDE_SLOT = 45.0 # Max degrees for each physical slot (left/right bottom)
 
-    # Draw Left Abstaining (180 to 225 degrees - 45 degree arc)
-    if total_mps_abstain_left > 0:
-        current_angle_deg_bottom_left = 180.0 # Start of the arc
+    # Draw Left Abstaining (180 to 225 degrees - 45 degree slot)
+    if total_mps_abstain_left > 0 and total_mps_all_abstain > 0:
+        current_angle_deg_bottom_left = 180.0 
         for party_data in abstain_left_to_draw:
             party_name = party_data["name"]
             party_mps = party_data["mps"]
             
-            angle_span_deg = (party_mps / total_mps_abstain_left) * 45.0 # Scale within the 45-degree arc
+            target_span = (party_mps / total_mps_all_abstain) * MAX_ABSTAIN_ANGLE_CONCEPTUAL_TOTAL
+            # Span for this party, capped at the max for a single side (e.g. if it's a huge party)
+            span_this_party_capped = min(target_span, MAX_ANGLE_PER_SIDE_SLOT) 
             
+            # Actual span to draw, further constrained by remaining space in this side's 45-deg slot
+            remaining_slot_angle = (180.0 + MAX_ANGLE_PER_SIDE_SLOT) - current_angle_deg_bottom_left
+            final_span_to_draw = min(span_this_party_capped, remaining_slot_angle)
+
+            if final_span_to_draw < 0.01: # Effectively zero, skip or break
+                continue
+
             start_wedge_angle_deg = current_angle_deg_bottom_left
-            end_wedge_angle_deg = current_angle_deg_bottom_left + angle_span_deg
-            # Ensure it doesn't exceed 225
-            end_wedge_angle_deg = min(end_wedge_angle_deg, 225.0)
-
-
+            end_wedge_angle_deg = current_angle_deg_bottom_left + final_span_to_draw
+            
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
                           width=DEFAULT_WEDGE_WIDTH, color=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
                           edgecolor='black', linewidth=0.5)
             ax.add_patch(wedge)
 
-            mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
-            label_text_radius_base = DEFAULT_WEDGE_RADIUS - DEFAULT_WEDGE_WIDTH / 2 + 0.1
-            label_radius_factor = 1.15
-            text_x = label_text_radius_base * math.cos(mid_angle_rad) * label_radius_factor
-            text_y = label_text_radius_base * math.sin(mid_angle_rad) * label_radius_factor
-            if 0 > text_y > -0.05: text_y = -0.05 
+            if final_span_to_draw > 1.0: # Only add label if wedge is somewhat visible
+                mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
+                label_text_radius_base = DEFAULT_WEDGE_RADIUS - DEFAULT_WEDGE_WIDTH / 2 + 0.1
+                label_radius_factor = 1.15
+                text_x = label_text_radius_base * math.cos(mid_angle_rad) * label_radius_factor
+                text_y = label_text_radius_base * math.sin(mid_angle_rad) * label_radius_factor
+                if 0 > text_y > -0.05: text_y = -0.05 
 
-            ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
-                    ha='center', va='center', fontsize=7,
-                    path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
-            current_angle_deg_bottom_left = end_wedge_angle_deg # Move to the end of the drawn wedge
+                ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
+                        ha='center', va='center', fontsize=7,
+                        path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
+            current_angle_deg_bottom_left = end_wedge_angle_deg 
 
-    # Draw Right Abstaining (315 to 360 degrees - 45 degree arc)
-    if total_mps_abstain_right > 0:
-        current_angle_deg_bottom_right = 360.0 # Start of the arc (drawing counter-clockwise)
-        for party_data in reversed(abstain_right_to_draw): # Draw from rightmost inwards
+    # Draw Right Abstaining (315 to 360 degrees - 45 degree slot)
+    if total_mps_abstain_right > 0 and total_mps_all_abstain > 0:
+        current_angle_deg_bottom_right = 360.0 
+        for party_data in reversed(abstain_right_to_draw): 
             party_name = party_data["name"]
             party_mps = party_data["mps"]
 
-            angle_span_deg = (party_mps / total_mps_abstain_right) * 45.0 # Scale within the 45-degree arc
+            target_span = (party_mps / total_mps_all_abstain) * MAX_ABSTAIN_ANGLE_CONCEPTUAL_TOTAL
+            span_this_party_capped = min(target_span, MAX_ANGLE_PER_SIDE_SLOT)
             
-            start_wedge_angle_deg = current_angle_deg_bottom_right - angle_span_deg
+            remaining_slot_angle = current_angle_deg_bottom_right - (360.0 - MAX_ANGLE_PER_SIDE_SLOT)
+            final_span_to_draw = min(span_this_party_capped, remaining_slot_angle)
+
+            if final_span_to_draw < 0.01:
+                continue
+            
+            start_wedge_angle_deg = current_angle_deg_bottom_right - final_span_to_draw
             end_wedge_angle_deg = current_angle_deg_bottom_right
-            # Ensure it doesn't go below 315
-            start_wedge_angle_deg = max(start_wedge_angle_deg, 315.0)
             
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
@@ -174,17 +189,18 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
                           edgecolor='black', linewidth=0.5)
             ax.add_patch(wedge)
 
-            mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
-            label_text_radius_base = DEFAULT_WEDGE_RADIUS - DEFAULT_WEDGE_WIDTH / 2 + 0.1
-            label_radius_factor = 1.15
-            text_x = label_text_radius_base * math.cos(mid_angle_rad) * label_radius_factor
-            text_y = label_text_radius_base * math.sin(mid_angle_rad) * label_radius_factor
-            if 0 > text_y > -0.05: text_y = -0.05
+            if final_span_to_draw > 1.0: # Only add label if wedge is somewhat visible
+                mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
+                label_text_radius_base = DEFAULT_WEDGE_RADIUS - DEFAULT_WEDGE_WIDTH / 2 + 0.1
+                label_radius_factor = 1.15
+                text_x = label_text_radius_base * math.cos(mid_angle_rad) * label_radius_factor
+                text_y = label_text_radius_base * math.sin(mid_angle_rad) * label_radius_factor
+                if 0 > text_y > -0.05: text_y = -0.05
 
-            ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
-                    ha='center', va='center', fontsize=7,
-                    path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
-            current_angle_deg_bottom_right = start_wedge_angle_deg # Move to the start of the drawn wedge (new end for next)
+                ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
+                        ha='center', va='center', fontsize=7,
+                        path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
+            current_angle_deg_bottom_right = start_wedge_angle_deg
     
     # Legend
     representative_color_for_legend = PARTY_METADATA["PS"]["color"] 
