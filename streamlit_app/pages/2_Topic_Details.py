@@ -3,6 +3,13 @@ import pandas as pd
 import os
 import json
 import re
+import math # Added
+import matplotlib.pyplot as plt # Added
+from matplotlib.patches import Wedge # Added
+import matplotlib.colors as mcolors # Added
+# import colorsys # No longer needed for desaturation
+import matplotlib.patches as mpatches # Added
+import matplotlib.patheffects as path_effects 
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -10,6 +17,129 @@ st.set_page_config(
     page_icon="🇵🇹",
     layout="wide"
 )
+
+# --- Party Metadata and Chart Configuration (ADD THIS SECTION) ---
+PARTY_METADATA = {
+    "PS": {"mps": 120, "color": "#FF69B4"},  # Pink
+    "PSD": {"mps": 77, "color": "#FF8C00"},   # Dark Orange
+    "CH": {"mps": 12, "color": "#000080"},    # Navy
+    "IL": {"mps": 8, "color": "#00BFFF"},     # Deep Sky Blue
+    "PCP": {"mps": 6, "color": "#CC0000"},    # Red (slightly darker than pure FF0000)
+    "BE": {"mps": 5, "color": "#8B0000"},     # Dark Red / Maroon
+    "PAN": {"mps": 1, "color": "#008000"},    # Green
+    "L": {"mps": 1, "color": "#20B2AA"}       # Light Sea Green
+}
+ORDERED_PARTIES = ["BE", "PCP", "L", "PS", "PAN", "IL", "PSD", "CH"] # Approx. Left to Right
+total_parliament_mps = sum(data["mps"] for data in PARTY_METADATA.values()) # Overall total for context
+# NEUTRAL_VOTE_COLOR = "#D3D3D3" # No longer directly used for wedges, but kept for potential future use
+
+# Define wedge visual properties
+DEFAULT_WEDGE_RADIUS = 1.0
+DEFAULT_WEDGE_WIDTH = 0.35 # Consistent width for all shown wedges
+FAVOR_ALPHA = 1.0  # Opaque
+CONTRA_ALPHA = 0.1 # More transparent
+
+# def desaturate_hex(hex_color, factor=0.5): # No longer needed for this chart
+#     try:
+#         rgb = mcolors.hex2color(hex_color)
+#         h, l, s = colorsys.rgb_to_hls(*rgb)
+#         s_desaturated = s * factor
+#         s_desaturated = max(0, min(s_desaturated, 1)) # Clamp saturation
+#         r, g, b = colorsys.hls_to_rgb(h, l, s_desaturated)
+#         return mcolors.rgb2hex((r, g, b))
+#     except ValueError:
+#         return hex_color # Return original if conversion fails
+
+def generate_parliament_viz(all_party_vote_data_with_stance):
+    # Filter out parties that abstained or had a neutral stance
+    voting_parties_data = [
+        p for p in all_party_vote_data_with_stance
+        if p["stance"] == "favor" or p["stance"] == "contra"
+    ]
+
+    if not voting_parties_data:
+        # No parties voted clearly for or against, so don't generate the chart.
+        # The calling code can display a message.
+        return None
+
+    # Calculate total MPs for *only* the parties that voted FOR or AGAINST
+    total_mps_in_chart = sum(p["mps"] for p in voting_parties_data)
+    if total_mps_in_chart == 0: # Should be caught by `if not voting_parties_data`
+        return None
+
+    fig, ax = plt.subplots(figsize=(10, 5.5)) 
+    ax.set_xlim(-1.2, 1.2)
+    ax.set_ylim(0, 1.2)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    current_angle_deg = 180  # Start from the left
+
+    for party_data in voting_parties_data: # Iterate over filtered list
+        party_name = party_data["name"]
+        party_mps = party_data["mps"]
+        base_color = party_data["base_color"]
+        stance = party_data["stance"]
+
+        if party_mps == 0: # Should not happen if total_mps_in_chart > 0 and party is in list
+            continue
+
+        # Angle span is relative to the total MPs of parties shown in the chart
+        angle_span_deg = (party_mps / total_mps_in_chart) * 180.0
+        
+        start_wedge_angle_deg = current_angle_deg - angle_span_deg
+        end_wedge_angle_deg = current_angle_deg
+
+        chosen_color = base_color # Always use the party's base color
+        current_alpha = FAVOR_ALPHA
+
+        if stance == "contra":
+            current_alpha = CONTRA_ALPHA
+        
+        wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
+                      theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
+                      width=DEFAULT_WEDGE_WIDTH, color=chosen_color, alpha=current_alpha, 
+                      edgecolor='black', linewidth=0.5)
+        ax.add_patch(wedge)
+
+        # Add label
+        mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
+        label_text_radius_base = DEFAULT_WEDGE_RADIUS - DEFAULT_WEDGE_WIDTH / 2 + 0.1 
+        label_radius_factor = 1.15
+        text_x = label_text_radius_base * math.cos(mid_angle_rad) * label_radius_factor
+        text_y = label_text_radius_base * math.sin(mid_angle_rad) * label_radius_factor
+        
+        if text_y < 0.05 : text_y = 0.05 
+
+        ax.text(text_x, text_y, f"{party_name}\n{party_mps}", 
+                ha='center', va='center', fontsize=7,
+                path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
+
+        current_angle_deg -= angle_span_deg
+    
+    # Legend
+    representative_color_for_legend = PARTY_METADATA["PS"]["color"] # Example color for patches
+
+    patch_favor = mpatches.Patch(color=representative_color_for_legend, alpha=FAVOR_ALPHA, label='A Favor (cor opaca)')
+    patch_contra = mpatches.Patch(color=representative_color_for_legend, alpha=CONTRA_ALPHA, label='Contra (cor transparente)')
+    
+    handles = [patch_favor, patch_contra]
+    legend_notes = "Nota: Partidos que se abstiveram, não votaram,\nou cujo voto não foi decisivo (empate) não são exibidos."
+
+    # Place the note below the legend items using the title parameter or by adding text
+    ax.legend(handles=handles, 
+              loc='lower center', 
+              bbox_to_anchor=(0.5, -0.05), # Adjusted for note
+              ncol=len(handles), 
+              fontsize=8, 
+              frameon=False)
+    
+    # Add the note text separately for better control if needed
+    fig.text(0.5, 0.05, legend_notes, ha='center', va='bottom', fontsize=7, style='italic')
+
+    fig.subplots_adjust(bottom=0.18) # Adjust bottom to make space for legend and note
+    
+    return fig
 
 # --- Data Loading ---
 # [[REPLACE THE EXISTING load_data FUNCTION WITH THE ONE DEFINED ABOVE]]
@@ -398,6 +528,67 @@ if issue_id_param and not data_df.empty:
                  st.markdown("Não há dados de votação por partido disponíveis para esta iniciativa.")
             else:
                  st.markdown("Processando dados de votação por partido...")
+
+            # --- Parliament Visualization (ADD THIS PART) ---
+            st.subheader("🏛️ Visualização da Votação no Parlamento")
+            
+            chart_data_for_viz = []
+            for party_name_meta, meta_info in PARTY_METADATA.items():
+                party_vote_info = topic_details_df[topic_details_df['party'] == party_name_meta]
+                
+                stance_for_viz = "neutral" # Default: will be filtered out by generate_parliament_viz
+                
+                if not party_vote_info.empty:
+                    party_row = party_vote_info.iloc[0]
+                    favor = int(party_row.get('votes_favor', 0))
+                    against = int(party_row.get('votes_against', 0))
+                    abstention = int(party_row.get('votes_abstention', 0))
+                    
+                    total_explicit_votes = favor + against + abstention
+
+                    if meta_info['mps'] > 0 and total_explicit_votes == 0: 
+                        stance_for_viz = "neutral" # No explicit votes, will be filtered
+                    elif favor > against and favor > abstention:
+                        stance_for_viz = "favor"
+                    elif against > favor and against > abstention:
+                        stance_for_viz = "contra"
+                    else: # Abstention is dominant, or complex tie (e.g. favor=abstention > contra), or all zero explicit votes
+                        stance_for_viz = "abstain" # Will be filtered
+                else:
+                    # Party from PARTY_METADATA not in topic_details_df for this vote
+                    stance_for_viz = "neutral" # Will be filtered
+
+                chart_data_for_viz.append({
+                    "name": party_name_meta,
+                    "mps": meta_info["mps"],
+                    "base_color": meta_info["color"],
+                    "stance": stance_for_viz # This stance is used for filtering in generate_parliament_viz
+                })
+
+            # Sort chart_data_for_viz according to ORDERED_PARTIES
+            ordered_chart_data = []
+            present_parties_in_data_map = {p['name']: p for p in chart_data_for_viz}
+            
+            for p_name in ORDERED_PARTIES:
+                if p_name in present_parties_in_data_map:
+                    ordered_chart_data.append(present_parties_in_data_map[p_name])
+            
+            # Add any parties from chart_data_for_viz not in ORDERED_PARTIES (e.g., if PARTY_METADATA is out of sync)
+            # This part is less critical if ORDERED_PARTIES covers all keys in PARTY_METADATA
+            # for p_data in chart_data_for_viz:
+            #     if p_data['name'] not in ORDERED_PARTIES:
+            #         ordered_chart_data.append(p_data) # Should not happen if ORDERED_PARTIES is comprehensive
+
+            if ordered_chart_data:
+                # Pass the data with all parties; filtering happens inside generate_parliament_viz
+                parliament_fig = generate_parliament_viz(ordered_chart_data) 
+                if parliament_fig:
+                    st.pyplot(parliament_fig)
+                else:
+                    st.markdown("Não foi possível gerar a visualização do parlamento (ex: nenhum partido votou explicitamente a favor ou contra, ou todos se abstiveram).")
+            else:
+                st.markdown("Não há dados suficientes para gerar a visualização do parlamento.")
+            # --- End of Parliament Visualization ---
 
         else:
             st.markdown("Não há dados de votação por partido para exibir.")
