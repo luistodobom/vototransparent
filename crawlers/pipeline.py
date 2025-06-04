@@ -72,7 +72,7 @@ def load_or_initialize_dataframe():
 def get_dataframe_columns():
     """Returns the list of expected DataFrame columns."""
     return [
-        'session_pdf_url', 'session_year', 'session_pdf_text_path', 'session_pdf_download_status',
+        'session_pdf_url', 'session_year', 'session_date', 'session_pdf_text_path', 'session_pdf_download_status',
         'proposal_name_from_session', 'proposal_gov_link', 'voting_details_json', 'session_parse_status',
         'proposal_authors_json', 'proposal_document_url', 'proposal_document_type', 
         'proposal_document_local_path', 'proposal_doc_download_status', 'proposal_details_scrape_status',
@@ -233,30 +233,66 @@ class ParliamentPDFScraper:
         if not html_content: return []
         soup = BeautifulSoup(html_content, 'html.parser')
         pdf_links = []
-        all_anchor_tags = soup.find_all('a', href=True)
         
-        for link_tag in all_anchor_tags:
-            href = link_tag.get('href', '')
-            text_content = link_tag.get_text(strip=True)
-
-            # Skip supplementary guides
-            if "guião suplementar" in text_content.lower():
-                print(f"Skipping supplementary guide: {text_content} ({href})")
-                continue
+        # Find all calendar detail containers that contain both date and PDF links
+        calendar_details = soup.find_all('div', class_='row home_calendar hc-detail')
+        
+        for calendar_detail in calendar_details:
+            # Extract date information
+            date_elem = calendar_detail.find('p', class_='date')
+            time_elem = calendar_detail.find('p', class_='time')
             
-            # Prioritize links that look like direct PDF links related to voting summaries
-            # Example: DARxxx.pdf, _Votacoes_, _ResultadosVotacao_
-            if (href.lower().endswith('.pdf') and 
-                any(kw in href.lower() for kw in ['votacoe', 'resultado', 'dar', 'serieii'])): # Added serieii based on typical DAR naming
-                full_url = urljoin("https://www.parlamento.pt", href)
-                # Further check if text implies it's a voting summary
-                if "votaç" in text_content.lower() or "diário" in text_content.lower() or "reunião plenária" in text_content.lower():
-                    pdf_links.append({'url': full_url, 'year': year, 'text': text_content, 'type': 'direct_pdf_votacao'})
-            # Parameterized links that often lead to PDFs
-            elif ('doc.pdf' in href.lower() or 'path=' in href.lower() or 'downloadfile' in href.lower()):
-                 if "votaç" in text_content.lower() or "diário" in text_content.lower():
+            session_date = None
+            if date_elem and time_elem:
+                try:
+                    day_month = date_elem.get_text(strip=True)  # e.g., "19.12"
+                    year_text = time_elem.get_text(strip=True)  # e.g., "2024"
+                    
+                    if '.' in day_month and year_text.isdigit():
+                        day, month = day_month.split('.')
+                        # Convert to ISO date format (YYYY-MM-DD)
+                        session_date = f"{year_text}-{month.zfill(2)}-{day.zfill(2)}"
+                except (ValueError, AttributeError) as e:
+                    print(f"Error parsing date from {day_month} and {year_text}: {e}")
+                    session_date = None
+            
+            # Find PDF links within this calendar detail
+            all_anchor_tags = calendar_detail.find_all('a', href=True)
+            
+            for link_tag in all_anchor_tags:
+                href = link_tag.get('href', '')
+                text_content = link_tag.get_text(strip=True)
+
+                # Skip supplementary guides
+                if "guião suplementar" in text_content.lower():
+                    print(f"Skipping supplementary guide: {text_content} ({href})")
+                    continue
+                
+                # Prioritize links that look like direct PDF links related to voting summaries
+                # Example: DARxxx.pdf, _Votacoes_, _ResultadosVotacao_
+                if (href.lower().endswith('.pdf') and 
+                    any(kw in href.lower() for kw in ['votacoe', 'resultado', 'dar', 'serieii'])): # Added serieii based on typical DAR naming
                     full_url = urljoin("https://www.parlamento.pt", href)
-                    pdf_links.append({'url': full_url, 'year': year, 'text': text_content, 'type': 'parameterized_pdf_votacao'})
+                    # Further check if text implies it's a voting summary
+                    if "votaç" in text_content.lower() or "diário" in text_content.lower() or "reunião plenária" in text_content.lower():
+                        pdf_links.append({
+                            'url': full_url, 
+                            'year': year, 
+                            'date': session_date,
+                            'text': text_content, 
+                            'type': 'direct_pdf_votacao'
+                        })
+                # Parameterized links that often lead to PDFs
+                elif ('doc.pdf' in href.lower() or 'path=' in href.lower() or 'downloadfile' in href.lower()):
+                     if "votaç" in text_content.lower() or "diário" in text_content.lower():
+                        full_url = urljoin("https://www.parlamento.pt", href)
+                        pdf_links.append({
+                            'url': full_url, 
+                            'year': year, 
+                            'date': session_date,
+                            'text': text_content, 
+                            'type': 'parameterized_pdf_votacao'
+                        })
         
         # Deduplicate based on URL
         unique_links = []
@@ -908,7 +944,8 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
         
         session_pdf_url = session_info['url']
         session_year = session_info['year']
-        print(f"\nProcessing session PDF URL: {session_pdf_url} (Year: {session_year})")
+        session_date = session_info.get('date')  # May be None if date extraction failed
+        print(f"\nProcessing session PDF URL: {session_pdf_url} (Year: {session_year}, Date: {session_date})")
 
         # Check if this session PDF has already been fully processed for all its proposals
         # This is a simplified check; more robust would be per-proposal status.
@@ -947,6 +984,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 new_row_idx = len(df)
                 df.loc[new_row_idx, 'session_pdf_url'] = session_pdf_url
                 df.loc[new_row_idx, 'session_year'] = session_year
+                df.loc[new_row_idx, 'session_date'] = session_date
                 df.loc[new_row_idx, 'session_pdf_download_status'] = 'Download Failed'
                 df.loc[new_row_idx, 'last_error_message'] = msg_or_path
                 df.loc[new_row_idx, 'overall_status'] = 'Failed Stage 1 (Session PDF Download)'
@@ -954,6 +992,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             else: # Update existing placeholder if any
                 idx_to_update = df[df['session_pdf_url'] == session_pdf_url].index
                 df.loc[idx_to_update, 'session_pdf_download_status'] = 'Download Failed'
+                df.loc[idx_to_update, 'session_date'] = session_date
                 df.loc[idx_to_update, 'last_error_message'] = msg_or_path
                 df.loc[idx_to_update, 'overall_status'] = 'Failed Stage 1 (Session PDF Download)'
                 df.loc[idx_to_update, 'last_processed_timestamp'] = datetime.now().isoformat()
@@ -971,6 +1010,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 new_row_idx = len(df)
                 df.loc[new_row_idx, 'session_pdf_url'] = session_pdf_url
                 df.loc[new_row_idx, 'session_year'] = session_year
+                df.loc[new_row_idx, 'session_date'] = session_date
                 df.loc[new_row_idx, 'session_pdf_text_path'] = current_session_pdf_path
                 df.loc[new_row_idx, 'session_pdf_download_status'] = 'Success'
                 df.loc[new_row_idx, 'session_parse_status'] = f'LLM Parse Failed: {llm_parse_error}'
@@ -979,6 +1019,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 df.loc[new_row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
             else:
                 for idx in indices:
+                    df.loc[idx, 'session_date'] = session_date
                     df.loc[idx, 'session_pdf_text_path'] = current_session_pdf_path
                     df.loc[idx, 'session_pdf_download_status'] = 'Success'
                     df.loc[idx, 'session_parse_status'] = f'LLM Parse Failed: {llm_parse_error}'
@@ -998,6 +1039,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 new_row_idx = len(df)
                 df.loc[new_row_idx, 'session_pdf_url'] = session_pdf_url
                 df.loc[new_row_idx, 'session_year'] = session_year
+                df.loc[new_row_idx, 'session_date'] = session_date
                 df.loc[new_row_idx, 'session_pdf_text_path'] = current_session_pdf_path
                 df.loc[new_row_idx, 'session_pdf_download_status'] = 'Success'
                 df.loc[new_row_idx, 'session_parse_status'] = status_message
@@ -1005,6 +1047,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 df.loc[new_row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
             else:
                  for idx in indices: # Should ideally be one summary row if no proposals
+                    df.loc[idx, 'session_date'] = session_date
                     df.loc[idx, 'session_pdf_text_path'] = current_session_pdf_path
                     df.loc[idx, 'session_pdf_download_status'] = 'Success'
                     df.loc[idx, 'session_parse_status'] = status_message
@@ -1033,11 +1076,13 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 row_idx = len(df)
                 df.loc[row_idx, 'session_pdf_url'] = session_pdf_url
                 df.loc[row_idx, 'session_year'] = session_year
+                df.loc[row_idx, 'session_date'] = session_date
                 df.loc[row_idx, 'proposal_name_from_session'] = proposal_name
             else:
                 row_idx = df[match_criteria].index[0]
 
             # Update common info from session PDF processing
+            df.loc[row_idx, 'session_date'] = session_date
             df.loc[row_idx, 'session_pdf_text_path'] = current_session_pdf_path
             df.loc[row_idx, 'session_pdf_download_status'] = 'Success'
             df.loc[row_idx, 'proposal_gov_link'] = proposal_gov_link
