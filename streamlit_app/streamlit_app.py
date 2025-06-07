@@ -411,24 +411,31 @@ if not data_df.empty:
                     st.markdown(f"### {date_str}")
                     
                     for row in results_for_date:
-                        with st.container():
+                        with st.container(border=True):
                             col1, col2 = st.columns([3, 1])
                             with col1:
-                                st.markdown(f"**{row['full_title']}**")
+                                st.markdown(f"#### {row['full_title']}")
                                 if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                     st.markdown(f"*{row['proposal_short_title']}*")
                                 if pd.notna(row['description']):
                                     st.markdown(f"_{row['description']}_")
                                 if pd.notna(row['issue_identifier']):
                                     st.caption(f"ID: {row['issue_identifier']}")
-                                if pd.notna(row['vote_outcome']):
-                                     st.caption(f"Resultado: {row['vote_outcome']}")
 
                             with col2:
                                 if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
                                     st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
                                     st.query_params["issue_id"] = str(row['issue_identifier'])
                                     st.switch_page("pages/2_Topic_Details.py")
+
+                            # Display vote outcome with styled icons
+                            vote_outcome = row.get('vote_outcome', 'N/A')
+                            if vote_outcome == "Aprovado":
+                                st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
+                            elif vote_outcome == "Rejeitado":
+                                st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
 
                             # Expander for other descriptions
                             with st.expander("Mais detalhes da proposta"):
@@ -439,7 +446,7 @@ if not data_df.empty:
                                     st.markdown("**Impacto Fiscal:**")
                                     st.markdown(row['proposal_summary_fiscal_impact'])
                                 if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
-                                    st.markdown("**Versão Coloquial:**")
+                                    st.markdown("**4. Sem precisar de dicionário:**")
                                     st.markdown(row['proposal_summary_colloquial'])
                                 if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
                                         (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
@@ -447,25 +454,33 @@ if not data_df.empty:
                                     st.markdown("Não há detalhes adicionais disponíveis.")
             else:
                 # Fallback to original display if no session_date
-                for _, row in results.iterrows():
-                    with st.container():
+                for row in results.iterrows():
+                    _, row = row  # Unpack the tuple from iterrows()
+                    with st.container(border=True):
                         col1, col2 = st.columns([3, 1])
                         with col1:
-                            st.markdown(f"**{row['full_title']}**")
+                            st.markdown(f"#### {row['full_title']}")
                             if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                 st.markdown(f"*{row['proposal_short_title']}*")
                             if pd.notna(row['description']):
                                 st.markdown(f"_{row['description']}_")
                             if pd.notna(row['issue_identifier']):
                                 st.caption(f"ID: {row['issue_identifier']}")
-                            if pd.notna(row['vote_outcome']):
-                                 st.caption(f"Resultado: {row['vote_outcome']}")
 
                         with col2:
                             if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
                                 st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
                                 st.query_params["issue_id"] = str(row['issue_identifier'])
                                 st.switch_page("pages/2_Topic_Details.py")
+
+                        # Display vote outcome with styled icons
+                        vote_outcome = row.get('vote_outcome', 'N/A')
+                        if vote_outcome == "Aprovado":
+                            st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
+                        elif vote_outcome == "Rejeitado":
+                            st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
 
                         # Expander for other descriptions
                         with st.expander("Mais detalhes da proposta"):
@@ -476,7 +491,7 @@ if not data_df.empty:
                                 st.markdown("**Impacto Fiscal:**")
                                 st.markdown(row['proposal_summary_fiscal_impact'])
                             if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
-                                st.markdown("**Versão Coloquial:**")
+                                st.markdown("**4. Sem precisar de dicionário:**")
                                 st.markdown(row['proposal_summary_colloquial'])
                             if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
                                     (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
@@ -501,4 +516,4 @@ else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
 # --- Footer ---
-st.markdown("<div class='footer'>Desenvolvido com ❤️ por MEIC-Top<br>Dados extraídos de documentos oficiais da Assembleia da República e processados.</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. Reporte erros enviando email para erros@vototransparente.pt</div>", unsafe_allow_html=True)

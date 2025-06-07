@@ -711,7 +711,7 @@ if issue_id_param and not data_df.empty:
                 st.markdown(topic_info['proposal_summary_fiscal_impact'])
 
         if pd.notna(topic_info['proposal_summary_colloquial']) and topic_info['proposal_summary_colloquial'].strip():
-            with st.expander("🗣️ **Em Português Claro (Resumo Coloquial)**", expanded=False):
+            with st.expander("🗣️ **Sem precisar de dicionário**", expanded=False):
                 st.markdown(topic_info['proposal_summary_colloquial'])
         
         if pd.notna(topic_info['hyperlink']) and topic_info['hyperlink'].strip():
