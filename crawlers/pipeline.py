@@ -78,6 +78,7 @@ def get_dataframe_columns():
         'proposal_document_local_path', 'proposal_doc_download_status', 'proposal_details_scrape_status',
         'proposal_summary_general', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 
         'proposal_summary_colloquial', 'proposal_category', 'proposal_summarize_status',
+        'proposal_approval_status', 'proposal_short_title', 
         'overall_status', 'last_error_message', 'last_processed_timestamp'
     ]
 
@@ -697,6 +698,7 @@ Based on this structured data, create a JSON array where each element represents
 1. 'proposal_name': The proposal identifier from the hyperlink text (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1")
 2. 'proposal_link': The URI/hyperlink for this proposal
 3. 'voting_summary': The voting breakdown by party from the associated table, OR if no table is present but the proposal appears in the "without individual voting tables" section, check if there are any text indicators in the original document suggesting unanimous approval or group voting.
+4. 'approval_status': An integer, 1 if the proposal was approved, 0 if it was rejected. If unclear, set to null.
 
 For voting_summary format:
 - If there's a voting table: Parse the table to extract vote counts for each party (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
@@ -705,11 +707,11 @@ For voting_summary format:
 - If no individual table but likely unanimous: Indicate unanimous voting with appropriate party breakdowns if you can infer them, or mark as unanimous.
 
 Important notes:
-- Some proposals may be approved "por unanimidade" (unanimously) - these should still be included with voting_summary indicating unanimous approval
+- Some proposals may be approved "por unanimidade" (unanimously) - these should still be included with voting_summary indicating unanimous approval and approval_status as 1.
 - Multiple proposals might share the same voting result if they were voted together
 - Always provide numerical counts in the voting_summary, not just 'X' marks
 
-Return only a valid JSON array. If you cannot determine voting information for a proposal, still include it with proposal_name and proposal_link, but set voting_summary to null.
+Return only a valid JSON array. If you cannot determine voting information for a proposal, still include it with proposal_name and proposal_link, but set voting_summary to null and approval_status to null.
 
 Example format:
 [
@@ -719,7 +721,8 @@ Example format:
     "voting_summary": {{
       "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
       "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
-    }}
+    }},
+    "approval_status": 1
   }}
 ]
 """
@@ -847,8 +850,9 @@ def summarize_proposal_text(proposal_document_path):
    9 - "Habitacao, Comunidades e Administracao Local"
    10 - "Negocios Estrangeiros e Cooperacao Internacional"
    11 - "Ciencia, Tecnologia e Digital"
+6. "short_title": A concise title for the proposal, maximum 10 words.
 
-Return only a valid JSON object with these 5 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
+Return only a valid JSON object with these 6 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
 
 Example format:
 {
@@ -856,7 +860,8 @@ Example format:
   "critical_analysis": "...",
   "fiscal_impact": "...",
   "colloquial_summary": "...",
-  "categories": [4, 5]
+  "categories": [4, 5],
+  "short_title": "Reforma do Sistema de Pensões"
 }
 """
     summary_data, error = call_gemini_api(prompt, document_path=proposal_document_path, expect_json=True)
@@ -867,7 +872,7 @@ Example format:
     if not isinstance(summary_data, dict):
         return None, f"LLM did not return a JSON object as expected. Got: {type(summary_data)}"
     
-    required_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 'colloquial_summary', 'categories']
+    required_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 'colloquial_summary', 'categories', 'short_title']
     for field in required_fields:
         if field not in summary_data:
             return None, f"Missing required field '{field}' in LLM response: {summary_data}"
@@ -1065,6 +1070,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             proposal_name = proposal_data.get('proposal_name')
             proposal_gov_link = proposal_data.get('proposal_link') # May be null
             voting_summary = proposal_data.get('voting_summary')
+            approval_status = proposal_data.get('approval_status') # Added
 
             if not proposal_name:
                 print(f"Skipping proposal with no name from {session_pdf_url}")
@@ -1088,6 +1094,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             df.loc[row_idx, 'proposal_gov_link'] = proposal_gov_link
             df.loc[row_idx, 'voting_details_json'] = json.dumps(voting_summary) if voting_summary else None
             df.loc[row_idx, 'session_parse_status'] = 'Success'
+            df.loc[row_idx, 'proposal_approval_status'] = approval_status # Added
             df.loc[row_idx, 'overall_status'] = 'Pending Further Stages' # Initial status after session parse
             df.loc[row_idx, 'last_error_message'] = None # Clear previous errors for this row
             df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
@@ -1130,6 +1137,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
                     df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
                     df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
+                    df.loc[row_idx, 'proposal_short_title'] = summary_data['short_title'] # Added
                     df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
                     df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
                 df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
