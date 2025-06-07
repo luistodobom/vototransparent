@@ -584,15 +584,17 @@ if issue_id_param and not data_df.empty:
         with col_summary:
             # --- Summary Section ---
             with st.container(border=True): 
-                st.subheader(f"Resultado Geral: {topic_info['vote_outcome'].upper()}")
-                
-                # Display session date if available
-                if pd.notna(topic_info.get('session_date')):
-                    date_formatted = pd.to_datetime(topic_info['session_date']).strftime("%d/%m/%Y")
-                    st.markdown(f"**Data da Votação:** {date_formatted}")
-
+                # Show proposing party and short title prominently
                 if pd.notna(topic_info.get('proposal_proposing_party')) and topic_info['proposal_proposing_party'] != 'N/A':
-                    st.markdown(f"**Proponente Principal/Partido:** {topic_info['proposal_proposing_party']}")
+                    st.markdown(f"**Proposta {topic_info['proposal_proposing_party']}**")
+                else:
+                    st.markdown("**Proposta**")
+                
+                # Show short title if available, otherwise use main title
+                if pd.notna(topic_info.get('proposal_short_title')) and topic_info['proposal_short_title'] != 'N/A':
+                    st.markdown(f"*{topic_info['proposal_short_title']}*")
+                
+                st.markdown("")  # Add some spacing
 
                 parties_favor_summary = []
                 parties_against_summary = []
@@ -614,39 +616,26 @@ if issue_id_param and not data_df.empty:
                         parties_abstention_summary.append(party_name)
                     # If tied, or only non-voters, they won't appear in these lists.
                 
-                if parties_favor_summary:
-                    st.markdown(f"**A FAVOR (maioria do partido):** {', '.join(sorted(list(set(parties_favor_summary))))}")
-                else:
-                    st.markdown("**A FAVOR (maioria do partido):** -")
+                # Display voting results in clean format
+                favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
+                st.markdown(f"**A Favor:** {favor_text}")
                 
-                if parties_against_summary:
-                    st.markdown(f"**CONTRA (maioria do partido):** {', '.join(sorted(list(set(parties_against_summary))))}")
-                else:
-                    st.markdown("**CONTRA (maioria do partido):** -")
+                contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
+                st.markdown(f"**Contra:** {contra_text}")
 
-                if parties_abstention_summary:
-                    st.markdown(f"**ABSTENÇÃO (maioria do partido):** {', '.join(sorted(list(set(parties_abstention_summary))))}")
-                else:
-                    st.markdown("**ABSTENÇÃO (maioria do partido):** -")
+                abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
+                st.markdown(f"**Abstenção:** {abstention_text}")
                 
-                st.markdown(" ") 
+                st.markdown("")  # Add some spacing
 
-                if pd.notna(topic_info['issue_type']):
-                    st.markdown(f"**Tipo de Iniciativa:** {topic_info['issue_type']}")
-                if pd.notna(topic_info['issue_identifier']):
-                    st.markdown(f"**Identificador:** {topic_info['issue_identifier']}")
-                
-                # Display categories
-                if 'proposal_category_list' in topic_info and topic_info['proposal_category_list']:
-                    category_names = [
-                        CATEGORY_MAPPING.get(cat_id, f"Categoria {cat_id}") 
-                        for cat_id in topic_info['proposal_category_list']
-                    ]
-                    if category_names:
-                        st.markdown(f"**Categorias:** {', '.join(category_names)}")
-                
-                if 'is_unanimous' in topic_info and pd.notna(topic_info['is_unanimous']):
-                     st.markdown(f"**Votação Unânime (geral):** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
+                # Clean approval status display
+                vote_outcome = topic_info['vote_outcome']
+                if vote_outcome == "Aprovado":
+                    st.markdown("✅ **Aprovado**")
+                elif vote_outcome == "Rejeitado":
+                    st.markdown("❌ **Rejeitado**")
+                else:
+                    st.markdown(f"❓ **{vote_outcome}**")
         
         with col_viz:
             # --- Parliament Visualization ---
