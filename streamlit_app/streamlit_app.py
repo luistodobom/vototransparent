@@ -401,7 +401,8 @@ if not data_df.empty:
 
                             with col2:
                                 if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                                    st.session_state.selected_issue_identifier = row['issue_identifier']
+                                    st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
+                                    st.query_params["issue_id"] = str(row['issue_identifier'])
                                     st.switch_page("pages/2_Topic_Details.py")
 
                             # Expander for other descriptions
@@ -435,7 +436,8 @@ if not data_df.empty:
 
                         with col2:
                             if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                                st.session_state.selected_issue_identifier = row['issue_identifier']
+                                st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
+                                st.query_params["issue_id"] = str(row['issue_identifier'])
                                 st.switch_page("pages/2_Topic_Details.py")
 
                         # Expander for other descriptions

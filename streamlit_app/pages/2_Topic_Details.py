@@ -448,10 +448,58 @@ CATEGORY_MAPPING = {
 }
 
 # --- Get Topic ID from Session State ---
-issue_id_param = st.session_state.get("selected_issue_identifier")
+# issue_id_param = st.session_state.get("selected_issue_identifier") # Old logic
+
+# --- Get Topic ID (Prioritize URL Query Params) ---
+# issue_id_param = None # Old initialization
+# query_params = st.query_params # Get a mutable proxy to URL query parameters
+
+# # 1. Check URL query parameters first
+# if "issue_id" in query_params:
+#     issue_id_param = str(query_params["issue_id"])
+#     st.session_state.selected_issue_identifier = issue_id_param # Sync session state
+# else:
+#     # 2. If not in query params, check session state
+#     session_issue_id = st.session_state.get("selected_issue_identifier")
+#     if session_issue_id:
+#         issue_id_param = str(session_issue_id)
+#         # Update query_params to reflect the state if loaded from session_state.
+#         # This makes the URL shareable even if initially navigated via session_state.
+#         # Setting a query param will cause a script rerun.
+#         query_params["issue_id"] = issue_id_param
+
+# --- Refined Get Topic ID Logic ---
+issue_id_param = None
+needs_url_update_for_session_id = False
+
+# Try to get ID from query parameters first
+query_param_id = st.query_params.get("issue_id")
+
+if query_param_id:
+    issue_id_param = str(query_param_id)
+    # Sync session_state if URL is the source of truth and differs
+    if st.session_state.get("selected_issue_identifier") != issue_id_param:
+        st.session_state.selected_issue_identifier = issue_id_param
+        # Normally, a rerun isn't strictly needed here just for syncing session_state
+        # as issue_id_param is already set for the current run.
+else:
+    # If not in query_params, try to get from session_state
+    session_state_id = st.session_state.get("selected_issue_identifier")
+    if session_state_id:
+        issue_id_param = str(session_state_id)
+        # Mark that the URL needs to be updated to reflect this ID
+        needs_url_update_for_session_id = True
+
+# If the ID came from session_state and URL needs updating, set query_params.
+# This will trigger a rerun. The page will then load with issue_id in query_params.
+# The content for *this current run* will use issue_id_param derived from session_state.
+if needs_url_update_for_session_id and issue_id_param:
+    st.query_params.update({"issue_id": issue_id_param})
+    # The script will rerun after this. For this current execution path,
+    # issue_id_param is already set, so content can be displayed.
 
 if issue_id_param and not data_df.empty:
-    # 'issue_identifier' is already string from load_data
+    # Ensure issue_id_param is treated as a string for comparison
     topic_details_df = data_df[data_df['issue_identifier'] == str(issue_id_param)]
 
     if not topic_details_df.empty:

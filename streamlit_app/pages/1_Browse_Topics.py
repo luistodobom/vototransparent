@@ -366,7 +366,8 @@ if not data_df.empty:
                                 st.caption(f"Tipo: {topic_row['issue_type']}")
                         with col2:
                             if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
-                                st.session_state.selected_issue_identifier = topic_row['issue_identifier']
+                                st.session_state.selected_issue_identifier = str(topic_row['issue_identifier']) # Ensure session state is set
+                                st.query_params["issue_id"] = str(topic_row['issue_identifier'])
                                 st.switch_page("pages/2_Topic_Details.py")
                         st.markdown(f"**Resultado da Votação:** {topic_row.get('vote_outcome', 'N/A')}")
                         
