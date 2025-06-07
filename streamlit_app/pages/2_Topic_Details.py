@@ -276,6 +276,11 @@ def load_data(csv_path="data/parliament_data.csv"):
             session_pdf_url_val = row.get('session_pdf_url', '')
             session_date_val = row.get('session_date', '')
 
+            # New fields
+            proposal_short_title_val = str(row.get('proposal_short_title', 'N/A'))
+            proposal_proposing_party_val = str(row.get('proposal_proposing_party', 'N/A'))
+            proposal_approval_status_raw = row.get('proposal_approval_status', pd.NA)
+
             # Parse proposal_category as list of integers
             proposal_category_raw = row.get('proposal_category', '[]')
             proposal_category_list = []
@@ -332,31 +337,30 @@ def load_data(csv_path="data/parliament_data.csv"):
                             'votes_abstention': abstention, 'votes_not_voted': not_voted,
                         })
             
-            vote_outcome_str = "Dados de votação não disponíveis"
-            is_unanimous_bool = False
+            # Determine overall vote outcome and unanimity for the proposal
+            is_unanimous_bool = False # Reset for each proposal
             if proposal_party_votes_list:
                 if current_proposal_overall_favor > 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
-                    vote_outcome_str = "Aprovado por unanimidade"; is_unanimous_bool = True
+                    is_unanimous_bool = True
                 elif current_proposal_overall_against > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_abstention == 0:
-                    vote_outcome_str = "Rejeitado por unanimidade"; is_unanimous_bool = True
-                elif current_proposal_overall_favor > current_proposal_overall_against: vote_outcome_str = "Aprovado"
-                elif current_proposal_overall_against > current_proposal_overall_favor: vote_outcome_str = "Rejeitado"
-                elif current_proposal_overall_favor == current_proposal_overall_against and current_proposal_overall_favor > 0: vote_outcome_str = "Empate"
+                    is_unanimous_bool = True
                 elif current_proposal_overall_abstention > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_against == 0:
                     all_abstained = all(p_vote['votes_favor'] == 0 and p_vote['votes_against'] == 0 for p_vote in proposal_party_votes_list)
-                    if all_abstained: vote_outcome_str = "Abstenção Geral"; is_unanimous_bool = True
-                    else: vote_outcome_str = "Resultado misto"
-                else:
-                    if current_proposal_overall_favor == 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
-                        total_non_voters = sum(pvd.get('votes_not_voted',0) for pvd in proposal_party_votes_list)
-                        if total_non_voters > 0 and not any(pvd.get('votes_favor',0) > 0 or pvd.get('votes_against',0) > 0 or pvd.get('votes_abstention',0) > 0 for pvd in proposal_party_votes_list):
-                             vote_outcome_str = "Ausência de votação registada"
-                        else:
-                             vote_outcome_str = "Sem votos expressos (Favor, Contra, Abstenção)"
-                    else: vote_outcome_str = "Resultado misto"
-            elif not valid_breakdown_found and pd.notna(voting_breakdown_json) and voting_breakdown_json.strip():
-                 vote_outcome_str = "Dados de votação malformados"
-
+                    if all_abstained: 
+                        is_unanimous_bool = True
+            
+            # New logic for vote_outcome_str based on proposal_approval_status
+            vote_outcome_str = "Resultado Desconhecido" # Default
+            if pd.notna(proposal_approval_status_raw):
+                try:
+                    status_as_int = int(proposal_approval_status_raw)
+                    if status_as_int == 1:
+                        vote_outcome_str = "Aprovado"
+                    elif status_as_int == 0:
+                        vote_outcome_str = "Rejeitado"
+                except ValueError:
+                    pass # Remains "Resultado Desconhecido"
+            
             if proposal_party_votes_list:
                 for p_vote in proposal_party_votes_list:
                     all_vote_details.append({
@@ -372,6 +376,9 @@ def load_data(csv_path="data/parliament_data.csv"):
                         'session_pdf_url': session_pdf_url_val,
                         'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
+                        'proposal_short_title': proposal_short_title_val,
+                        'proposal_proposing_party': proposal_proposing_party_val,
+                        'proposal_approval_status': proposal_approval_status_raw,
                     })
             else:
                 all_vote_details.append({
@@ -386,6 +393,9 @@ def load_data(csv_path="data/parliament_data.csv"):
                     'session_pdf_url': session_pdf_url_val,
                     'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
+                    'proposal_short_title': proposal_short_title_val,
+                    'proposal_proposing_party': proposal_proposing_party_val,
+                    'proposal_approval_status': proposal_approval_status_raw,
                 })
         
         if not all_vote_details: st.info("No vote data could be processed."); return pd.DataFrame()
@@ -401,12 +411,16 @@ def load_data(csv_path="data/parliament_data.csv"):
             'issue_identifier', 'full_title', 'description', 'hyperlink', 'vote_outcome', 'is_unanimous', 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
-            'session_pdf_url', 'session_date', 'proposal_category_list'
+            'session_pdf_url', 'session_date', 'proposal_category_list',
+            'proposal_short_title', 'proposal_proposing_party', 'proposal_approval_status' # Added new columns
         ]
         for col in expected_cols:
             if col not in df.columns:
                 if col in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']: df[col] = 0
                 elif col == 'is_unanimous': df[col] = False
+                elif col == 'proposal_short_title': df[col] = 'N/A'
+                elif col == 'proposal_proposing_party': df[col] = 'N/A'
+                elif col == 'proposal_approval_status': df[col] = pd.NA
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
                 elif col == 'proposal_category_list': df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
@@ -417,7 +431,11 @@ def load_data(csv_path="data/parliament_data.csv"):
         df['session_pdf_url'] = df['session_pdf_url'].fillna('')
         df['is_unanimous'] = df['is_unanimous'].fillna(False).astype(bool)
         df['authors_json_str'] = df['authors_json_str'].fillna('[]')
-        df['proposal_category_list'] = df['proposal_category_list'].fillna('').apply(lambda x: [] if x == '' else x)
+        df['proposal_category_list'] = df['proposal_category_list'].fillna('').apply(lambda x: [] if x == '' else x) # Ensure it's list
+        df['proposal_short_title'] = df['proposal_short_title'].fillna('N/A') # Ensure new column handled
+        df['proposal_proposing_party'] = df['proposal_proposing_party'].fillna('N/A') # Ensure new column handled
+        df['proposal_approval_status'] = pd.to_numeric(df['proposal_approval_status'], errors='coerce') # Ensure new column handled
+
         for col_fill_empty_str in ['proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
             df[col_fill_empty_str] = df[col_fill_empty_str].fillna('')
         for col_to_int in ['votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted']:
@@ -507,6 +525,8 @@ if issue_id_param and not data_df.empty:
         topic_info = topic_details_df.iloc[0]
 
         st.title(f"🗳️ {topic_info['full_title']}")
+        if pd.notna(topic_info['proposal_short_title']) and topic_info['proposal_short_title'] != 'N/A':
+            st.subheader(f"{topic_info['proposal_short_title']}")
         st.markdown("---")
 
         # --- Prepare Data for Parliament Visualization (Moved Up) ---
@@ -570,6 +590,9 @@ if issue_id_param and not data_df.empty:
                 if pd.notna(topic_info.get('session_date')):
                     date_formatted = pd.to_datetime(topic_info['session_date']).strftime("%d/%m/%Y")
                     st.markdown(f"**Data da Votação:** {date_formatted}")
+
+                if pd.notna(topic_info.get('proposal_proposing_party')) and topic_info['proposal_proposing_party'] != 'N/A':
+                    st.markdown(f"**Proponente Principal/Partido:** {topic_info['proposal_proposing_party']}")
 
                 parties_favor_summary = []
                 parties_against_summary = []
