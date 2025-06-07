@@ -220,7 +220,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
     if handles:
         ax.legend(handles=handles, 
                   loc='lower center', 
-                  bbox_to_anchor=(0.5, -0.12), 
+                  bbox_to_anchor=(0.5, -0.08), # Adjusted y-offset from -0.12 to -0.08
                   ncol=len(handles), 
                   fontsize=8, 
                   frameon=False)
@@ -509,70 +509,133 @@ if issue_id_param and not data_df.empty:
         st.title(f"🗳️ {topic_info['full_title']}")
         st.markdown("---")
 
-        # --- Summary Section ---
-        with st.container(border=True): 
-            st.subheader(f"Resultado Geral: {topic_info['vote_outcome'].upper()}")
-            
-            # Display session date if available
-            if pd.notna(topic_info.get('session_date')):
-                date_formatted = pd.to_datetime(topic_info['session_date']).strftime("%d/%m/%Y")
-                st.markdown(f"**Data da Votação:** {date_formatted}")
-
-            parties_favor_summary = []
-            parties_against_summary = []
-            parties_abstention_summary = []
-
-            for _, party_row in topic_details_df.iterrows():
-                if party_row['party'] == 'N/A': continue # Skip if no party data for this proposal
-                party_name = party_row['party']
-                favor_votes = int(party_row.get('votes_favor', 0))
-                against_votes = int(party_row.get('votes_against', 0))
-                abstention_votes = int(party_row.get('votes_abstention', 0))
-                
-                # Determine majority vote for the party
-                if favor_votes > against_votes and favor_votes > abstention_votes:
-                    parties_favor_summary.append(party_name)
-                elif against_votes > favor_votes and against_votes > abstention_votes:
-                    parties_against_summary.append(party_name)
-                elif abstention_votes > favor_votes and abstention_votes > against_votes: # Only count as abstention if it's the primary stance
-                    parties_abstention_summary.append(party_name)
-                # If tied, or only non-voters, they won't appear in these lists.
-            
-            if parties_favor_summary:
-                st.markdown(f"**A FAVOR (maioria do partido):** {', '.join(sorted(list(set(parties_favor_summary))))}")
-            else:
-                st.markdown("**A FAVOR (maioria do partido):** -")
-            
-            if parties_against_summary:
-                st.markdown(f"**CONTRA (maioria do partido):** {', '.join(sorted(list(set(parties_against_summary))))}")
-            else:
-                st.markdown("**CONTRA (maioria do partido):** -")
-
-            if parties_abstention_summary:
-                st.markdown(f"**ABSTENÇÃO (maioria do partido):** {', '.join(sorted(list(set(parties_abstention_summary))))}")
-            else:
-                st.markdown("**ABSTENÇÃO (maioria do partido):** -")
-            
-            st.markdown(" ") 
-
-            if pd.notna(topic_info['issue_type']):
-                st.markdown(f"**Tipo de Iniciativa:** {topic_info['issue_type']}")
-            if pd.notna(topic_info['issue_identifier']):
-                st.markdown(f"**Identificador:** {topic_info['issue_identifier']}")
-            
-            # Display categories
-            if 'proposal_category_list' in topic_info and topic_info['proposal_category_list']:
-                category_names = [
-                    CATEGORY_MAPPING.get(cat_id, f"Categoria {cat_id}") 
-                    for cat_id in topic_info['proposal_category_list']
-                ]
-                if category_names:
-                    st.markdown(f"**Categorias:** {', '.join(category_names)}")
-            
-            if 'is_unanimous' in topic_info and pd.notna(topic_info['is_unanimous']):
-                 st.markdown(f"**Votação Unânime (geral):** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
+        # --- Prepare Data for Parliament Visualization (Moved Up) ---
+        parliament_fig = None
+        # Filter out N/A party if it exists and there are other parties for visualization.
+        viz_parties_df = topic_details_df[topic_details_df['party'] != 'N/A']
+        if viz_parties_df.empty and not topic_details_df.empty: # Only N/A party was found
+            viz_parties_df = topic_details_df 
         
-        # --- Authors Section ---
+        if not viz_parties_df.empty:
+            chart_data_for_viz = []
+            for party_name_meta, meta_info in PARTY_METADATA.items():
+                party_vote_info = viz_parties_df[viz_parties_df['party'] == party_name_meta]
+                
+                stance_for_viz = "neutral" 
+                
+                if not party_vote_info.empty:
+                    party_row = party_vote_info.iloc[0]
+                    favor = int(party_row.get('votes_favor', 0))
+                    against = int(party_row.get('votes_against', 0))
+                    abstention = int(party_row.get('votes_abstention', 0))
+                    
+                    total_explicit_votes = favor + against + abstention
+
+                    if meta_info['mps'] > 0 and total_explicit_votes == 0: 
+                        stance_for_viz = "neutral" 
+                    elif favor > against and favor > abstention:
+                        stance_for_viz = "favor"
+                    elif against > favor and against > abstention:
+                        stance_for_viz = "contra"
+                    else: 
+                        stance_for_viz = "abstain" 
+                else:
+                    stance_for_viz = "neutral" 
+
+                chart_data_for_viz.append({
+                    "name": party_name_meta,
+                    "mps": meta_info["mps"],
+                    "base_color": meta_info["color"],
+                    "stance": stance_for_viz
+                })
+            
+            ordered_chart_data = sorted(
+                chart_data_for_viz,
+                key=lambda x: ORDERED_PARTIES.index(x['name']) if x['name'] in ORDERED_PARTIES else float('inf')
+            )
+            ordered_chart_data = [p for p in ordered_chart_data if p['name'] in ORDERED_PARTIES]
+
+            if ordered_chart_data:
+                parliament_fig = generate_parliament_viz(ordered_chart_data)
+        
+        # --- Create Columns for Summary and Visualization ---
+        col_summary, col_viz = st.columns([6, 4]) # Adjust ratio as needed, e.g., [3, 2] or [6,4]
+
+        with col_summary:
+            # --- Summary Section ---
+            with st.container(border=True): 
+                st.subheader(f"Resultado Geral: {topic_info['vote_outcome'].upper()}")
+                
+                # Display session date if available
+                if pd.notna(topic_info.get('session_date')):
+                    date_formatted = pd.to_datetime(topic_info['session_date']).strftime("%d/%m/%Y")
+                    st.markdown(f"**Data da Votação:** {date_formatted}")
+
+                parties_favor_summary = []
+                parties_against_summary = []
+                parties_abstention_summary = []
+
+                for _, party_row in topic_details_df.iterrows():
+                    if party_row['party'] == 'N/A': continue # Skip if no party data for this proposal
+                    party_name = party_row['party']
+                    favor_votes = int(party_row.get('votes_favor', 0))
+                    against_votes = int(party_row.get('votes_against', 0))
+                    abstention_votes = int(party_row.get('votes_abstention', 0))
+                    
+                    # Determine majority vote for the party
+                    if favor_votes > against_votes and favor_votes > abstention_votes:
+                        parties_favor_summary.append(party_name)
+                    elif against_votes > favor_votes and against_votes > abstention_votes:
+                        parties_against_summary.append(party_name)
+                    elif abstention_votes > favor_votes and abstention_votes > against_votes: # Only count as abstention if it's the primary stance
+                        parties_abstention_summary.append(party_name)
+                    # If tied, or only non-voters, they won't appear in these lists.
+                
+                if parties_favor_summary:
+                    st.markdown(f"**A FAVOR (maioria do partido):** {', '.join(sorted(list(set(parties_favor_summary))))}")
+                else:
+                    st.markdown("**A FAVOR (maioria do partido):** -")
+                
+                if parties_against_summary:
+                    st.markdown(f"**CONTRA (maioria do partido):** {', '.join(sorted(list(set(parties_against_summary))))}")
+                else:
+                    st.markdown("**CONTRA (maioria do partido):** -")
+
+                if parties_abstention_summary:
+                    st.markdown(f"**ABSTENÇÃO (maioria do partido):** {', '.join(sorted(list(set(parties_abstention_summary))))}")
+                else:
+                    st.markdown("**ABSTENÇÃO (maioria do partido):** -")
+                
+                st.markdown(" ") 
+
+                if pd.notna(topic_info['issue_type']):
+                    st.markdown(f"**Tipo de Iniciativa:** {topic_info['issue_type']}")
+                if pd.notna(topic_info['issue_identifier']):
+                    st.markdown(f"**Identificador:** {topic_info['issue_identifier']}")
+                
+                # Display categories
+                if 'proposal_category_list' in topic_info and topic_info['proposal_category_list']:
+                    category_names = [
+                        CATEGORY_MAPPING.get(cat_id, f"Categoria {cat_id}") 
+                        for cat_id in topic_info['proposal_category_list']
+                    ]
+                    if category_names:
+                        st.markdown(f"**Categorias:** {', '.join(category_names)}")
+                
+                if 'is_unanimous' in topic_info and pd.notna(topic_info['is_unanimous']):
+                     st.markdown(f"**Votação Unânime (geral):** {'Sim ✅' if topic_info['is_unanimous'] else 'Não ❌'}")
+        
+        with col_viz:
+            # --- Parliament Visualization ---
+            st.subheader("🏛️ Votação no Parlamento")
+            if parliament_fig:
+                st.pyplot(parliament_fig)
+            elif not viz_parties_df.empty: # If we had parties but still no fig (e.g. all neutral)
+                st.markdown("Não foi possível gerar a visualização do parlamento (sem dados de votação para exibir ou todos os partidos neutros).")
+            else: # No party data at all for viz_parties_df
+                st.markdown("Não há dados de partidos para gerar a visualização do parlamento.")
+
+        # --- Authors Section (Remains below the two columns) ---
         if pd.notna(topic_info['authors_json_str']) and topic_info['authors_json_str'] != '[]':
             try:
                 authors_list = json.loads(topic_info['authors_json_str'])
@@ -613,6 +676,7 @@ if issue_id_param and not data_df.empty:
             st.markdown(f"📄 **Link para o PDF da sessão de votação:** [Aceder aqui]({topic_info['session_pdf_url']})", unsafe_allow_html=True)
 
         st.markdown("---")
+        # --- Votação por Partido Político (Table - Remains below the two columns) ---
         st.subheader("📊 Votação por Partido Político")
         
         # Filter out N/A party if it exists and there are other parties.
@@ -665,59 +729,11 @@ if issue_id_param and not data_df.empty:
             else:
                  st.markdown("Processando dados de votação por partido...")
 
-            # --- Parliament Visualization ---
-            st.subheader("🏛️ Visualização da Votação no Parlamento")
+            # --- Parliament Visualization --- # This section is now moved to the top right column
+            # st.subheader("🏛️ Visualização da Votação no Parlamento") # Original placement
             
-            chart_data_for_viz = []
-            for party_name_meta, meta_info in PARTY_METADATA.items():
-                party_vote_info = topic_details_df[topic_details_df['party'] == party_name_meta]
-                
-                stance_for_viz = "neutral" 
-                
-                if not party_vote_info.empty:
-                    party_row = party_vote_info.iloc[0]
-                    favor = int(party_row.get('votes_favor', 0))
-                    against = int(party_row.get('votes_against', 0))
-                    abstention = int(party_row.get('votes_abstention', 0))
-                    
-                    total_explicit_votes = favor + against + abstention
-
-                    if meta_info['mps'] > 0 and total_explicit_votes == 0: 
-                        stance_for_viz = "neutral" 
-                    elif favor > against and favor > abstention:
-                        stance_for_viz = "favor"
-                    elif against > favor and against > abstention:
-                        stance_for_viz = "contra"
-                    else: 
-                        stance_for_viz = "abstain" # Explicitly "abstain" for dominant abstention or tie
-                else:
-                    stance_for_viz = "neutral" # Party not in vote data
-
-                chart_data_for_viz.append({
-                    "name": party_name_meta,
-                    "mps": meta_info["mps"],
-                    "base_color": meta_info["color"],
-                    "stance": stance_for_viz
-                })
-            
-            # Sort chart_data_for_viz according to ORDERED_PARTIES before passing
-            # This ensures that when generate_parliament_viz splits them, the relative order is maintained.
-            ordered_chart_data = sorted(
-                chart_data_for_viz,
-                key=lambda x: ORDERED_PARTIES.index(x['name']) if x['name'] in ORDERED_PARTIES else float('inf')
-            )
-            # Filter out parties not in ORDERED_PARTIES if any snuck in, though PARTY_METADATA should be the source.
-            ordered_chart_data = [p for p in ordered_chart_data if p['name'] in ORDERED_PARTIES]
-
-
-            if ordered_chart_data:
-                parliament_fig = generate_parliament_viz(ordered_chart_data) 
-                if parliament_fig:
-                    st.pyplot(parliament_fig)
-                else:
-                    st.markdown("Não foi possível gerar a visualização do parlamento (sem dados de votação para exibir).")
-            else:
-                st.markdown("Não há dados de partidos para gerar a visualização do parlamento.")
+            # chart_data_for_viz = [] # Logic moved up
+            # ... (rest of the visualization data prep and display logic is now at the top) ...
             # --- End of Parliament Visualization ---
 
         else:
