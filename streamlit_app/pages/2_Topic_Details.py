@@ -92,10 +92,18 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             if stance == "contra":
                 current_alpha = CONTRA_ALPHA
             
+            # Determine linewidth based on party size
+            if party_mps < 3:
+                linewidth = 1
+            elif party_mps <= 10:
+                linewidth = 1.5
+            else:
+                linewidth = 2
+            
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
                           width=DEFAULT_WEDGE_WIDTH, color=chosen_color, alpha=current_alpha, 
-                          edgecolor=base_color, linewidth=1.5)  # Changed: use base_color for border and increased linewidth
+                          edgecolor=base_color, linewidth=linewidth)
             ax.add_patch(wedge)
 
             mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
@@ -148,10 +156,18 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             start_wedge_angle_deg = current_angle_deg_bottom_left
             end_wedge_angle_deg = current_angle_deg_bottom_left + final_span_to_draw
             
+            # Determine linewidth based on party size
+            if party_mps < 3:
+                linewidth = 1
+            elif party_mps <= 10:
+                linewidth = 1.5
+            else:
+                linewidth = 2
+            
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
                           width=DEFAULT_WEDGE_WIDTH, color=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
-                          edgecolor='black', linewidth=0.5)
+                          edgecolor='black', linewidth=linewidth)
             ax.add_patch(wedge)
 
             if final_span_to_draw > 1.0: # Only add label if wedge is somewhat visible
@@ -186,10 +202,18 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             start_wedge_angle_deg = current_angle_deg_bottom_right - final_span_to_draw
             end_wedge_angle_deg = current_angle_deg_bottom_right
             
+            # Determine linewidth based on party size
+            if party_mps < 3:
+                linewidth = 1
+            elif party_mps <= 10:
+                linewidth = 1.5
+            else:
+                linewidth = 2
+            
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
                           width=DEFAULT_WEDGE_WIDTH, color=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
-                          edgecolor='black', linewidth=0.5)
+                          edgecolor='black', linewidth=linewidth)
             ax.add_patch(wedge)
 
             if final_span_to_draw > 1.0: # Only add label if wedge is somewhat visible
