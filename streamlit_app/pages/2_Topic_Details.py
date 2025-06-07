@@ -17,21 +17,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Back Button ---
-col_back, col_spacer = st.columns([1, 4])
-with col_back:
-    # Check if user came from search (has search query in session state)
-    if st.session_state.get("last_search_query"):
-        if st.button("⬅️ Voltar à Pesquisa", use_container_width=True):
-            # Go back to main page and restore search query
-            st.switch_page("streamlit_app.py")
-    else:
-        if st.button("⬅️ Voltar à Lista", use_container_width=True):
-            # Go back to browse page (filters will be restored from session state)
-            st.switch_page("pages/1_Browse_Topics.py")
-
-st.markdown("---")
-
 # --- Party Metadata and Chart Configuration ---
 PARTY_METADATA = {
     "PS": {"mps": 120, "color": "#CE18BC"},  # Pink

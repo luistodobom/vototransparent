@@ -286,10 +286,6 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
 
 data_df = load_data() 
 
-# Clear search query from session state since we're on the browse page
-if "last_search_query" in st.session_state:
-    del st.session_state.last_search_query
-
 st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
@@ -299,16 +295,11 @@ col_category, col_approval_status = st.columns([3, 2])
 
 with col_category:
     st.markdown("#### Filtrar por Categoria:")
-    # Get default value from session state
-    default_categories = st.session_state.get("browse_selected_categories", [])
     selected_categories = st.multiselect(
         label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
         options=categories,
-        default=default_categories,
         label_visibility="collapsed"
     )
-    # Store in session state
-    st.session_state.browse_selected_categories = selected_categories
 
 with col_approval_status:
     st.markdown("#### Aprovação:")
@@ -318,18 +309,12 @@ with col_approval_status:
         "Rejeitado": 0.0,
         "Desconhecido": "unknown"
     }
-    # Get default index from session state
-    default_approval = st.session_state.get("browse_selected_approval", "Todos")
-    default_approval_index = list(approval_status_options.keys()).index(default_approval) if default_approval in approval_status_options else 0
-    
     selected_approval_label = st.selectbox(
         label="Filtro Estado Aprovação",
         options=list(approval_status_options.keys()),
-        index=default_approval_index,
+        index=0,
         label_visibility="collapsed"
     )
-    # Store in session state
-    st.session_state.browse_selected_approval = selected_approval_label
     selected_approval_filter_val = approval_status_options[selected_approval_label]
 
 # Second row of filters
@@ -341,35 +326,21 @@ with col_proposing_party:
     if not data_df.empty and 'proposal_proposing_party' in data_df.columns:
         available_proposing_parties = sorted(data_df['proposal_proposing_party'].dropna().unique())
     
-    # Get default index from session state
-    default_proposing_party = st.session_state.get("browse_selected_proposing_party", "Todos")
-    proposing_party_options = ["Todos"] + available_proposing_parties
-    default_proposing_party_index = proposing_party_options.index(default_proposing_party) if default_proposing_party in proposing_party_options else 0
-    
     selected_proposing_party = st.selectbox(
         label="Filtro Proponente",
-        options=proposing_party_options,
-        index=default_proposing_party_index,
+        options=["Todos"] + available_proposing_parties,
+        index=0,
         label_visibility="collapsed"
     )
-    # Store in session state
-    st.session_state.browse_selected_proposing_party = selected_proposing_party
 
 with col_government:
     st.markdown("#### Governo:")
-    # Get default index from session state
-    default_government = st.session_state.get("browse_selected_government", "Todos")
-    government_options = list(GOVERNMENT_PERIODS.keys())
-    default_government_index = government_options.index(default_government) if default_government in government_options else 0
-    
     selected_government = st.selectbox(
         label="Filtro por Período de Governo",
-        options=government_options,
-        index=default_government_index,
+        options=list(GOVERNMENT_PERIODS.keys()),
+        index=0,
         label_visibility="collapsed"
     )
-    # Store in session state
-    st.session_state.browse_selected_government = selected_government
 
 st.markdown("---")
 
@@ -465,9 +436,6 @@ if not data_df.empty:
                         with col2:
                             if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
                                 st.session_state.selected_issue_identifier = str(topic_row['issue_identifier']) # Ensure session state is set
-                                # Clear search query when navigating from browse to details
-                                if "last_search_query" in st.session_state:
-                                    del st.session_state.last_search_query
                                 st.query_params["issue_id"] = str(topic_row['issue_identifier'])
                                 st.switch_page("pages/2_Topic_Details.py")
                         
