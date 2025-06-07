@@ -352,14 +352,23 @@ st.markdown("<div class='custom-subtitle'>O Seu Guia para as Votações Parlamen
 # st.markdown(\"---\") # Remove this divider or style it via CSS if needed
 
 if not data_df.empty:
+    # Initialize session state for search query
+    if 'search_query' not in st.session_state:
+        st.session_state.search_query = ''
+    if 'last_page' not in st.session_state:
+        st.session_state.last_page = 'home'
+
     # --- Search Functionality ---
-    # st.header(\"🔍 Pesquisar Votações\") # Original header, can be removed for cleaner look
     search_query = st.text_input(
-        "", # Label removed, placeholder is more prominent
-        placeholder="Pesquisar por palavra-chave...", # Simpler placeholder
-        # "Procure por título, número da iniciativa ou palavras-chave na descrição:", # Original label
-        # placeholder="Ex: Orçamento do Estado, PL/123/XVI/1, habitação" # Original placeholder
+        "", 
+        placeholder="Pesquisar por palavra-chave...",
+        value=st.session_state.search_query,  # Restore previous search query
+        key="search_input"
     )
+
+    # Update session state when search query changes
+    if search_query != st.session_state.search_query:
+        st.session_state.search_query = search_query
 
     if search_query:
         # Perform a case-insensitive search across relevant fields
@@ -427,8 +436,14 @@ if not data_df.empty:
 
                             with col2:
                                 if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                                    st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
-                                    st.query_params["issue_id"] = str(row['issue_identifier'])
+                                    st.session_state.last_page = 'home'
+                                    st.session_state.selected_issue_identifier = str(row['issue_identifier'])
+                                    # Set query parameters before navigation
+                                    st.query_params.update({
+                                        "issue_id": str(row['issue_identifier']),
+                                        "from_page": "home",
+                                        "search_query": search_query
+                                    })
                                     st.switch_page("pages/2_Topic_Details.py")
 
                             # Display vote outcome with styled icons
@@ -472,8 +487,14 @@ if not data_df.empty:
 
                         with col2:
                             if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
-                                st.session_state.selected_issue_identifier = str(row['issue_identifier']) # Ensure session state is set
-                                st.query_params["issue_id"] = str(row['issue_identifier'])
+                                st.session_state.last_page = 'home'
+                                st.session_state.selected_issue_identifier = str(row['issue_identifier'])
+                                # Set query parameters before navigation
+                                st.query_params.update({
+                                    "issue_id": str(row['issue_identifier']),
+                                    "from_page": "home",
+                                    "search_query": search_query
+                                })
                                 st.switch_page("pages/2_Topic_Details.py")
 
                         # Display vote outcome with styled icons
@@ -503,17 +524,14 @@ if not data_df.empty:
         else:
             st.info(f"Nenhuma votação encontrada para \"{search_query}\".") # Simpler message
     
-    # st.markdown(\"---\") # Remove divider
-    # st.header(\"📖 Navegar por Todas as Votações\") # Original header
-    # st.markdown(\"Veja uma lista completa de todas as votações processadas.\") # Original markdown
-    
     # Centered "Browse All Votes" link/button
-    st.markdown("<br>", unsafe_allow_html=True) # Add some space
-    cols_browse = st.columns([1,2,1]) # Use columns to center the button/link
+    st.markdown("<br>", unsafe_allow_html=True)
+    cols_browse = st.columns([1,2,1])
     with cols_browse[1]:
         if st.button("Navegar por Todas as Votações", use_container_width=True, key="browse_all_main"):
-             st.switch_page("pages/1_Browse_Topics.py")
-    # st.page_link(\"pages/1_Browse_Topics.py\", label=\"Ver Todos os Tópicos de Votação\", icon=\"📜\") # Original page_link
+            st.session_state.last_page = 'home'
+            st.query_params["from_page"] = "home"
+            st.switch_page("pages/1_Browse_Topics.py")
 
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")

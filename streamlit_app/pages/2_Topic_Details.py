@@ -498,64 +498,68 @@ CATEGORY_MAPPING = {
     11: "Ciência, Tecnologia e Digital"
 }
 
-# --- Get Topic ID from Session State ---
-# issue_id_param = st.session_state.get("selected_issue_identifier") # Old logic
-
-# --- Get Topic ID (Prioritize URL Query Params) ---
-# issue_id_param = None # Old initialization
-# query_params = st.query_params # Get a mutable proxy to URL query parameters
-
-# # 1. Check URL query parameters first
-# if "issue_id" in query_params:
-#     issue_id_param = str(query_params["issue_id"])
-#     st.session_state.selected_issue_identifier = issue_id_param # Sync session state
-# else:
-#     # 2. If not in query params, check session state
-#     session_issue_id = st.session_state.get("selected_issue_identifier")
-#     if session_issue_id:
-#         issue_id_param = str(session_issue_id)
-#         # Update query_params to reflect the state if loaded from session_state.
-#         # This makes the URL shareable even if initially navigated via session_state.
-#         # Setting a query param will cause a script rerun.
-#         query_params["issue_id"] = issue_id_param
-
-# --- Refined Get Topic ID Logic ---
+# --- Get Topic ID and Handle Back Navigation ---
 issue_id_param = None
-needs_url_update_for_session_id = False
+from_page = st.query_params.get("from_page", "home")
 
-# Try to get ID from query parameters first
+# Initialize session state
+if 'last_page' not in st.session_state:
+    st.session_state.last_page = from_page
+
+# Check if coming from a specific page and handle restoration
+if from_page == "home":
+    search_query = st.query_params.get("search_query", "")
+    if search_query:
+        st.session_state.search_query = search_query
+elif from_page == "browse":
+    # Restore filter states from query parameters
+    categories_param = st.query_params.get("categories", "")
+    if categories_param:
+        st.session_state.selected_categories = [cat for cat in categories_param.split(",") if cat]
+    approval_param = st.query_params.get("approval")
+    if approval_param:
+        st.session_state.selected_approval_label = approval_param
+    proposing_party_param = st.query_params.get("proposing_party")
+    if proposing_party_param:
+        st.session_state.selected_proposing_party = proposing_party_param
+    government_param = st.query_params.get("government")
+    if government_param:
+        st.session_state.selected_government = government_param
+
+# Get issue_id from query parameters
 query_param_id = st.query_params.get("issue_id")
-
 if query_param_id:
     issue_id_param = str(query_param_id)
-    # Sync session_state if URL is the source of truth and differs
-    if st.session_state.get("selected_issue_identifier") != issue_id_param:
-        st.session_state.selected_issue_identifier = issue_id_param
-        # Normally, a rerun isn't strictly needed here just for syncing session_state
-        # as issue_id_param is already set for the current run.
+    st.session_state.selected_issue_identifier = issue_id_param
 else:
-    # If not in query_params, try to get from session_state
-    session_state_id = st.session_state.get("selected_issue_identifier")
-    if session_state_id:
-        issue_id_param = str(session_state_id)
-        # Mark that the URL needs to be updated to reflect this ID
-        needs_url_update_for_session_id = True
-
-# If the ID came from session_state and URL needs updating, set query_params.
-# This will trigger a rerun. The page will then load with issue_id in query_params.
-# The content for *this current run* will use issue_id_param derived from session_state.
-if needs_url_update_for_session_id and issue_id_param:
-    st.query_params.update({"issue_id": issue_id_param})
-    # The script will rerun after this. For this current execution path,
-    # issue_id_param is already set, so content can be displayed.
+    # Fallback to session state
+    issue_id_param = st.session_state.get("selected_issue_identifier")
 
 if issue_id_param and not data_df.empty:
-    # Ensure issue_id_param is treated as a string for comparison
     topic_details_df = data_df[data_df['issue_identifier'] == str(issue_id_param)]
 
     if not topic_details_df.empty:
-        # General Info (from the first row, should be consistent per issue_identifier)
         topic_info = topic_details_df.iloc[0]
+
+        # Add navigation breadcrumb with working back buttons
+        if from_page == "home":
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("⬅️ Voltar", key="back_to_home"):
+                    # Clear query params to avoid conflicts
+                    st.query_params.clear()
+                    st.switch_page("streamlit_app.py")
+            with col2:
+                st.markdown("🏠 Página Inicial > 🗳️ Detalhes da Votação")
+        elif from_page == "browse":
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                if st.button("⬅️ Voltar", key="back_to_browse"):
+                    # Clear query params to avoid conflicts  
+                    st.query_params.clear()
+                    st.switch_page("pages/1_Browse_Topics.py")
+            with col2:
+                st.markdown("🏠 Página Inicial > 📜 Todas as Votações > 🗳️ Detalhes da Votação")
 
         st.title(f"🗳️ {topic_info['full_title']}")
         if pd.notna(topic_info['proposal_short_title']) and topic_info['proposal_short_title'] != 'N/A':
@@ -796,14 +800,32 @@ if issue_id_param and not data_df.empty:
 
     else:
         st.error(f"Não foram encontrados detalhes para a votação com o identificador: {issue_id_param}")
-        st.page_link("pages/1_Browse_Topics.py", label="Voltar à lista de votações", icon="⬅️")
+        # Provide navigation back
+        if from_page == "home":
+            if st.button("⬅️ Voltar à Página Inicial", key="back_to_home_error"):
+                st.query_params.clear()
+                st.switch_page("streamlit_app.py")
+        else:
+            if st.button("⬅️ Voltar a Todas as Votações", key="back_to_browse_error"):
+                st.query_params.clear()
+                st.switch_page("pages/1_Browse_Topics.py")
 
 elif data_df.empty:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro na consola ou na página principal.")
+    if st.button("🏠 Ir para a Página Inicial", key="home_data_error"):
+        st.query_params.clear()
+        st.switch_page("streamlit_app.py")
 else:
     st.info("Selecione uma votação na página 'Todas as Votações' ou pesquise na página inicial para ver os detalhes.")
-    st.page_link("streamlit_app.py", label="Ir para a Página Inicial", icon="🏠")
-    st.page_link("pages/1_Browse_Topics.py", label="Navegar por Todas as Votações", icon="📜")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🏠 Ir para a Página Inicial", key="home_no_id"):
+            st.query_params.clear()
+            st.switch_page("streamlit_app.py")
+    with col2:
+        if st.button("📜 Navegar por Todas as Votações", key="browse_no_id"):
+            st.query_params.clear()
+            st.switch_page("pages/1_Browse_Topics.py")
 
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
 st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")

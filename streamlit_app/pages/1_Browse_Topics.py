@@ -298,6 +298,36 @@ data_df = load_data()
 st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
+# Initialize session state for filters
+if 'selected_categories' not in st.session_state:
+    st.session_state.selected_categories = []
+if 'selected_approval_label' not in st.session_state:
+    st.session_state.selected_approval_label = "Todos"
+if 'selected_proposing_party' not in st.session_state:
+    st.session_state.selected_proposing_party = "Todos"
+if 'selected_government' not in st.session_state:
+    st.session_state.selected_government = "Todos"
+if 'last_page' not in st.session_state:
+    st.session_state.last_page = 'browse'
+
+# Check if returning from details page and restore filters
+from_page = st.query_params.get("from_page")
+if from_page == "browse":
+    categories_param = st.query_params.get("categories", "")
+    if categories_param:
+        st.session_state.selected_categories = [cat for cat in categories_param.split(",") if cat]
+    approval_param = st.query_params.get("approval")
+    if approval_param:
+        st.session_state.selected_approval_label = approval_param
+    proposing_party_param = st.query_params.get("proposing_party")
+    if proposing_party_param:
+        st.session_state.selected_proposing_party = proposing_party_param
+    government_param = st.query_params.get("government")
+    if government_param:
+        st.session_state.selected_government = government_param
+    # Clear query params after restoring state
+    st.query_params.clear()
+
 # --- Filters Section ---
 # First row of filters
 col_category, col_approval_status = st.columns([3, 2])
@@ -307,8 +337,10 @@ with col_category:
     selected_categories = st.multiselect(
         label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
         options=categories,
+        default=st.session_state.selected_categories,
         label_visibility="collapsed"
     )
+    st.session_state.selected_categories = selected_categories
 
 with col_approval_status:
     st.markdown("#### Aprovação:")
@@ -321,9 +353,10 @@ with col_approval_status:
     selected_approval_label = st.selectbox(
         label="Filtro Estado Aprovação",
         options=list(approval_status_options.keys()),
-        index=0,
+        index=list(approval_status_options.keys()).index(st.session_state.selected_approval_label),
         label_visibility="collapsed"
     )
+    st.session_state.selected_approval_label = selected_approval_label
     selected_approval_filter_val = approval_status_options[selected_approval_label]
 
 # Second row of filters
@@ -335,21 +368,24 @@ with col_proposing_party:
     if not data_df.empty and 'proposal_proposing_party' in data_df.columns:
         available_proposing_parties = sorted(data_df['proposal_proposing_party'].dropna().unique())
     
+    proposing_party_options = ["Todos"] + available_proposing_parties
     selected_proposing_party = st.selectbox(
         label="Filtro Proponente",
-        options=["Todos"] + available_proposing_parties,
-        index=0,
+        options=proposing_party_options,
+        index=0 if st.session_state.selected_proposing_party not in proposing_party_options else proposing_party_options.index(st.session_state.selected_proposing_party),
         label_visibility="collapsed"
     )
+    st.session_state.selected_proposing_party = selected_proposing_party
 
 with col_government:
     st.markdown("#### Governo:")
     selected_government = st.selectbox(
         label="Filtro por Período de Governo",
         options=list(GOVERNMENT_PERIODS.keys()),
-        index=0,
+        index=list(GOVERNMENT_PERIODS.keys()).index(st.session_state.selected_government),
         label_visibility="collapsed"
     )
+    st.session_state.selected_government = selected_government
 
 st.markdown("---")
 
@@ -444,10 +480,19 @@ if not data_df.empty:
                                 st.markdown(f"_{topic_row['description']}_")
                         with col2:
                             if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
-                                st.session_state.selected_issue_identifier = str(topic_row['issue_identifier']) # Ensure session state is set
-                                st.query_params["issue_id"] = str(topic_row['issue_identifier'])
+                                st.session_state.last_page = 'browse'
+                                st.session_state.selected_issue_identifier = str(topic_row['issue_identifier'])
+                                # Set query parameters with current filter state
+                                st.query_params.update({
+                                    "issue_id": str(topic_row['issue_identifier']),
+                                    "from_page": "browse",
+                                    "categories": ",".join(selected_categories),
+                                    "approval": selected_approval_label,
+                                    "proposing_party": selected_proposing_party,
+                                    "government": selected_government
+                                })
                                 st.switch_page("pages/2_Topic_Details.py")
-                        
+                
                         # Display vote outcome with styled icons
                         vote_outcome = topic_row.get('vote_outcome', 'N/A')
                         if vote_outcome == "Aprovado":
