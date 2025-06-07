@@ -541,26 +541,7 @@ if issue_id_param and not data_df.empty:
     if not topic_details_df.empty:
         topic_info = topic_details_df.iloc[0]
 
-        # Add navigation breadcrumb with working back buttons
-        if from_page == "home":
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                if st.button("⬅️ Voltar", key="back_to_home"):
-                    # Clear query params to avoid conflicts
-                    st.query_params.clear()
-                    st.switch_page("streamlit_app.py")
-            with col2:
-                st.markdown("🏠 Página Inicial > 🗳️ Detalhes da Votação")
-        elif from_page == "browse":
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                if st.button("⬅️ Voltar", key="back_to_browse"):
-                    # Clear query params to avoid conflicts  
-                    st.query_params.clear()
-                    st.switch_page("pages/1_Browse_Topics.py")
-            with col2:
-                st.markdown("🏠 Página Inicial > 📜 Todas as Votações > 🗳️ Detalhes da Votação")
-
+        # Remove the navigation breadcrumb and back buttons - clean page design
         st.title(f"🗳️ {topic_info['full_title']}")
         if pd.notna(topic_info['proposal_short_title']) and topic_info['proposal_short_title'] != 'N/A':
             st.subheader(f"{topic_info['proposal_short_title']}")
@@ -800,32 +781,12 @@ if issue_id_param and not data_df.empty:
 
     else:
         st.error(f"Não foram encontrados detalhes para a votação com o identificador: {issue_id_param}")
-        # Provide navigation back
-        if from_page == "home":
-            if st.button("⬅️ Voltar à Página Inicial", key="back_to_home_error"):
-                st.query_params.clear()
-                st.switch_page("streamlit_app.py")
-        else:
-            if st.button("⬅️ Voltar a Todas as Votações", key="back_to_browse_error"):
-                st.query_params.clear()
-                st.switch_page("pages/1_Browse_Topics.py")
+        # Simplified error message without navigation buttons
 
 elif data_df.empty:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro na consola ou na página principal.")
-    if st.button("🏠 Ir para a Página Inicial", key="home_data_error"):
-        st.query_params.clear()
-        st.switch_page("streamlit_app.py")
 else:
     st.info("Selecione uma votação na página 'Todas as Votações' ou pesquise na página inicial para ver os detalhes.")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🏠 Ir para a Página Inicial", key="home_no_id"):
-            st.query_params.clear()
-            st.switch_page("streamlit_app.py")
-    with col2:
-        if st.button("📜 Navegar por Todas as Votações", key="browse_no_id"):
-            st.query_params.clear()
-            st.switch_page("pages/1_Browse_Topics.py")
 
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
 st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")

@@ -511,7 +511,7 @@ if not data_df.empty:
                                 st.markdown("**Impacto Fiscal:**")
                                 st.markdown(topic_row['proposal_summary_fiscal_impact'])
                             if pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip():
-                                st.markdown("**4. Sem precisar de dicionário:**")
+                                st.markdown("🗣️ **Sem precisar de dicionário**")
                                 st.markdown(topic_row['proposal_summary_colloquial'])
                             if not ((pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip()) or 
                                     (pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip()) or 

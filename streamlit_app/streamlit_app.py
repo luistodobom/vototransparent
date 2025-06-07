@@ -464,7 +464,7 @@ if not data_df.empty:
                                     st.markdown("**Impacto Fiscal:**")
                                     st.markdown(row['proposal_summary_fiscal_impact'])
                                 if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
-                                    st.markdown("**4. Sem precisar de dicionário:**")
+                                    st.markdown("🗣️ **Sem precisar de dicionário**")
                                     st.markdown(row['proposal_summary_colloquial'])
                                 if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
                                         (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
@@ -515,7 +515,7 @@ if not data_df.empty:
                                 st.markdown("**Impacto Fiscal:**")
                                 st.markdown(row['proposal_summary_fiscal_impact'])
                             if pd.notna(row['proposal_summary_colloquial']) and row['proposal_summary_colloquial'].strip():
-                                st.markdown("**4. Sem precisar de dicionário:**")
+                                st.markdown("🗣️ **Sem precisar de dicionário**")
                                 st.markdown(row['proposal_summary_colloquial'])
                             if not ((pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip()) or 
                                     (pd.notna(row['proposal_summary_fiscal_impact']) and row['proposal_summary_fiscal_impact'].strip()) or 
