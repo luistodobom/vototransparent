@@ -738,7 +738,7 @@ def create_structured_data_prompt(structured_data_text):
 {structured_data_text}
 
 Com base nestes dados estruturados, crie um array JSON onde cada elemento representa UMA proposta (hiperlink) que foi votada.
-- Se um grupo de hiperlinks compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"), crie um objeto JSON separado para CADA hiperlink desse grupo (listados sob "HIPERLINKS NESTE GRUPO"). O 'voting_summary' e 'approval_status' para cada uma dessas propostas serão derivados da tabela COMPARTILHADA.
+- Se um grupo de hiperlinks compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"), crie um objeto JSON unico com o hyperlink principal e ignore os outros.
 - Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação conforme descrito abaixo.
 
 Para cada proposta (hiperlink), extraia:
