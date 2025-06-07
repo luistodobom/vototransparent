@@ -321,10 +321,10 @@ class ParliamentPDFScraper:
 
 def extract_hyperlink_table_pairs_and_unpaired_links(pdf_path):
     """
-    Extracts pairs of (hyperlink text, URI) and associated tables from a PDF.
+    Extracts groups of hyperlinks and their single associated table from a PDF.
     Also returns a list of hyperlinks that did not have a table immediately following them.
-    A table is associated with a hyperlink if it appears directly after the hyperlink
-    on the same page.
+    A table is associated with all hyperlinks that appear directly before it
+    on the same page and after any previously processed table or its associated hyperlinks.
     """
     extracted_pairs = []
     unpaired_hyperlinks = []
@@ -349,6 +349,7 @@ def extract_hyperlink_table_pairs_and_unpaired_links(pdf_path):
                     'page_num_fitz': page_num # 0-indexed for internal use
                 })
         
+        # Sort hyperlinks by their vertical position (top y-coordinate: rect[1])
         page_hyperlinks.sort(key=lambda h: h['rect'][1])
 
         # 2. Extract tables from the current page using tabula
@@ -368,18 +369,21 @@ def extract_hyperlink_table_pairs_and_unpaired_links(pdf_path):
                                                       stream=True,
                                                       silent=True)
         except Exception as e:
+            # print(f"Warning: Could not extract tables from page {page_num + 1} with tabula: {e}")
             tables_on_page_json = []
 
         for table_json_data in tables_on_page_json:
             table_rows_text = []
-            if table_json_data['data']:
+            if table_json_data['data']: # Check if data is not empty
                 for row_obj in table_json_data['data']:
                     current_row = [cell['text'] for cell in row_obj]
                     table_rows_text.append(current_row)
             
-            if not table_rows_text:
+            if not table_rows_text: # Skip if table has no text data
                 continue
+
             df = pd.DataFrame(table_rows_text)
+            
             page_tables_data.append({
                 'dataframe': df,
                 'top': table_json_data['top'],
@@ -389,38 +393,60 @@ def extract_hyperlink_table_pairs_and_unpaired_links(pdf_path):
                 'page_num_fitz': page_num
             })
             
+        # Sort tables by their vertical position (top y-coordinate)
         page_tables_data.sort(key=lambda t: t['top'])
 
         # 3. Correlate hyperlinks and tables on the page
-        current_table_idx = 0
-        for hyperlink in page_hyperlinks:
-            hyperlink_bottom_y = hyperlink['rect'][3]
-            found_table_for_hyperlink = False
+        hyperlink_cursor = 0 # Index of the next hyperlink to consider assigning
+        
+        for table_idx in range(len(page_tables_data)):
+            table = page_tables_data[table_idx]
+            table_top_y = table['top']
+            
+            links_for_current_table = []
+            
+            # Iterate through available hyperlinks to see if they are above the current table
+            temp_cursor_for_this_table = hyperlink_cursor
+            while temp_cursor_for_this_table < len(page_hyperlinks):
+                hyperlink = page_hyperlinks[temp_cursor_for_this_table]
+                hyperlink_bottom_y = hyperlink['rect'][3]
 
-            for table_idx in range(current_table_idx, len(page_tables_data)):
-                table = page_tables_data[table_idx]
-                table_top_y = table['top']
-
-                if table_top_y > hyperlink_bottom_y:
-                    extracted_pairs.append({
-                        'hyperlink_text': hyperlink['text'],
-                        'uri': hyperlink['uri'],
-                        'table_data': table['dataframe'],
-                        'page_num': hyperlink['page_num_fitz'] + 1
+                if hyperlink_bottom_y < table_top_y:
+                    # This hyperlink is above the current table and not yet assigned
+                    links_for_current_table.append({
+                        'text': hyperlink['text'],
+                        'uri': hyperlink['uri']
+                        # Optionally, include rect or other details:
+                        # 'rect': hyperlink['rect'], 
+                        # 'page_num_fitz': hyperlink['page_num_fitz']
                     })
-                    current_table_idx = table_idx + 1
-                    found_table_for_hyperlink = True
+                    temp_cursor_for_this_table += 1
+                else:
+                    # This hyperlink is below or at the same level as the table's top,
+                    # so it (and subsequent hyperlinks) belong to later tables or are unpaired.
                     break 
             
-            if not found_table_for_hyperlink:
-                unpaired_hyperlinks.append({
-                    'hyperlink_text': hyperlink['text'],
-                    'uri': hyperlink['uri'],
-                    'page_num': hyperlink['page_num_fitz'] + 1
+            if links_for_current_table:
+                extracted_pairs.append({
+                    'hyperlinks': links_for_current_table, # Now a list of hyperlink dicts
+                    'table_data': table['dataframe'],
+                    'page_num': table['page_num_fitz'] + 1 # User-friendly page number
                 })
+                # Advance the main hyperlink_cursor past the links assigned to this table
+                hyperlink_cursor = temp_cursor_for_this_table 
+        
+        # Add any remaining hyperlinks (those after all tables on the page, or if no tables) to unpaired_hyperlinks
+        for i in range(hyperlink_cursor, len(page_hyperlinks)):
+            hyperlink = page_hyperlinks[i]
+            unpaired_hyperlinks.append({
+                'hyperlink_text': hyperlink['text'], # Keep 'hyperlink_text' for consistency with old unpaired structure
+                'uri': hyperlink['uri'],
+                'page_num': hyperlink['page_num_fitz'] + 1
+            })
 
     doc_fitz.close()
     return extracted_pairs, unpaired_hyperlinks
+
 
 def extract_votes_from_session_pdf_text(session_pdf_path):
     """Enhanced voting extraction using manual PDF parsing followed by LLM processing."""
@@ -449,7 +475,6 @@ def extract_votes_from_session_pdf_text(session_pdf_path):
         text, extract_error = extract_text_from_pdf(session_pdf_path)
         if extract_error:
             return None, f"PDF text extraction failed: {extract_error}"
-        return extract_votes_from_session_pdf_text_original(text)
     
     # Format the structured data for the LLM
     structured_data_text = format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links)
@@ -553,8 +578,11 @@ def process_long_pdf_in_chunks(session_pdf_path, page_count):
 
 def extract_hyperlink_table_pairs_for_page_range(pdf_path, start_page, end_page):
     """
-    Extract hyperlink-table pairs and unpaired links for a specific page range in the PDF.
-    Note: start_page and end_page are 1-indexed for consistency with tabula
+    Extracts groups of hyperlinks and their single associated table for a specific page range in the PDF.
+    Also returns a list of hyperlinks within that page range that did not have a table immediately following them.
+    A table is associated with all hyperlinks that appear directly before it
+    on the same page and after any previously processed table or its associated hyperlinks.
+    Note: start_page and end_page are 1-indexed.
     """
     extracted_pairs = []
     unpaired_hyperlinks = []
@@ -592,6 +620,7 @@ def extract_hyperlink_table_pairs_for_page_range(pdf_path, start_page, end_page)
         # 2. Extract tables from the current page using tabula
         page_tables_data = []
         try:
+            # Tabula pages are 1-indexed
             tables_on_page_json = tabula.read_pdf(pdf_path, 
                                                  pages=str(page_num + 1), 
                                                  output_format="json", 
@@ -624,105 +653,143 @@ def extract_hyperlink_table_pairs_for_page_range(pdf_path, start_page, end_page)
                 'left': table_json_data['left'],
                 'bottom': table_json_data['top'] + table_json_data['height'],
                 'right': table_json_data['left'] + table_json_data['width'],
-                'page_num_fitz': page_num
+                'page_num_fitz': page_num # Keep 0-indexed for internal consistency
             })
             
         page_tables_data.sort(key=lambda t: t['top'])
 
-        # 3. Correlate hyperlinks and tables on the page
-        current_table_idx = 0
-        for hyperlink in page_hyperlinks:
-            hyperlink_bottom_y = hyperlink['rect'][3]
-            found_table_for_hyperlink = False
+        # 3. Correlate hyperlinks and tables on the page (NEW LOGIC APPLIED HERE)
+        hyperlink_cursor = 0 # Index of the next hyperlink to consider assigning
+        
+        for table_idx in range(len(page_tables_data)):
+            table = page_tables_data[table_idx]
+            table_top_y = table['top']
+            
+            links_for_current_table = []
+            
+            temp_cursor_for_this_table = hyperlink_cursor
+            while temp_cursor_for_this_table < len(page_hyperlinks):
+                hyperlink = page_hyperlinks[temp_cursor_for_this_table]
+                hyperlink_bottom_y = hyperlink['rect'][3]
 
-            for table_idx in range(current_table_idx, len(page_tables_data)):
-                table = page_tables_data[table_idx]
-                table_top_y = table['top']
-
-                if table_top_y > hyperlink_bottom_y:
-                    extracted_pairs.append({
-                        'hyperlink_text': hyperlink['text'],
-                        'uri': hyperlink['uri'],
-                        'table_data': table['dataframe'],
-                        'page_num': hyperlink['page_num_fitz'] + 1
+                if hyperlink_bottom_y < table_top_y:
+                    links_for_current_table.append({
+                        'text': hyperlink['text'],
+                        'uri': hyperlink['uri']
                     })
-                    current_table_idx = table_idx + 1
-                    found_table_for_hyperlink = True
+                    temp_cursor_for_this_table += 1
+                else:
                     break 
             
-            if not found_table_for_hyperlink:
-                unpaired_hyperlinks.append({
-                    'hyperlink_text': hyperlink['text'],
-                    'uri': hyperlink['uri'],
-                    'page_num': hyperlink['page_num_fitz'] + 1
+            if links_for_current_table:
+                extracted_pairs.append({
+                    'hyperlinks': links_for_current_table,
+                    'table_data': table['dataframe'],
+                    'page_num': table['page_num_fitz'] + 1 # User-friendly 1-indexed page number
                 })
+                hyperlink_cursor = temp_cursor_for_this_table 
+        
+        # Add any remaining hyperlinks on this page to unpaired_hyperlinks
+        for i in range(hyperlink_cursor, len(page_hyperlinks)):
+            hyperlink = page_hyperlinks[i]
+            unpaired_hyperlinks.append({
+                'hyperlink_text': hyperlink['text'], # Keep 'hyperlink_text' for consistency
+                'uri': hyperlink['uri'],
+                'page_num': hyperlink['page_num_fitz'] + 1 # User-friendly 1-indexed page number
+            })
 
     doc_fitz.close()
     return extracted_pairs, unpaired_hyperlinks
 
 def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links):
-    """Format the structured data for the LLM."""
+    """Format the structured data for the LLM, accommodating grouped hyperlinks."""
     structured_data_text = "STRUCTURED PROPOSAL DATA EXTRACTED FROM PDF:\n\n"
     
-    # Add hyperlink-table pairs
+    # Add hyperlink-table pairs (groups of hyperlinks sharing one table)
     if hyperlink_table_pairs:
-        structured_data_text += "PROPOSALS WITH VOTING TABLES:\n"
-        for i, pair in enumerate(hyperlink_table_pairs, 1):
-            structured_data_text += f"\n{i}. PROPOSAL: {pair['hyperlink_text']}\n"
-            structured_data_text += f"   LINK: {pair['uri']}\n"
-            structured_data_text += f"   PAGE: {pair['page_num']}\n"
-            structured_data_text += f"   VOTING TABLE:\n"
+        structured_data_text += "PROPOSALS WITH VOTING TABLES (a group of proposals may share one table):\n"
+        for i, group in enumerate(hyperlink_table_pairs, 1):
+            structured_data_text += f"\nGROUP {i} (Page: {group['page_num']}):\n"
+            structured_data_text += f"  HYPERLINKS IN THIS GROUP (sharing the table below):\n"
+            for link_info in group['hyperlinks']:
+                structured_data_text += f"    - TEXT: {link_info['text']}, URI: {link_info['uri']}\n"
+            structured_data_text += f"  SHARED VOTING TABLE FOR THIS GROUP:\n"
             # Convert DataFrame to string representation
-            table_str = pair['table_data'].to_string(index=False)
-            structured_data_text += f"   {table_str}\n"
-            structured_data_text += "   " + "-"*50 + "\n"
+            table_str = group['table_data'].to_string(index=False, header=True) # Added header for clarity
+            structured_data_text += f"    {table_str.replace(chr(10), chr(10) + '    ')}\n" # Indent table lines
+            structured_data_text += "  " + "-"*50 + "\n"
     
     # Add unpaired links
     if unpaired_links:
         structured_data_text += "\nPROPOSALS WITHOUT INDIVIDUAL VOTING TABLES (may be approved unanimously or in groups):\n"
         for i, link in enumerate(unpaired_links, 1):
-            structured_data_text += f"\n{i}. PROPOSAL: {link['hyperlink_text']}\n"
+            structured_data_text += f"\n{i}. PROPOSAL TEXT: {link['hyperlink_text']}\n" # Changed to 'PROPOSAL TEXT'
             structured_data_text += f"   LINK: {link['uri']}\n"
             structured_data_text += f"   PAGE: {link['page_num']}\n"
     
     return structured_data_text
 
 def create_structured_data_prompt(structured_data_text):
-    """Create the LLM prompt for structured data."""
-    prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have already extracted the structured proposal data from the PDF for you.
+    """Create the LLM prompt for structured data, accommodating grouped hyperlinks."""
+    prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have already extracted structured proposal data from the PDF. This data consists of:
+1. Groups of proposals: Each group contains one or more hyperlinks (propostas) that are associated with a single voting table that immediately follows them on the page. All hyperlinks in a group share the same voting table.
+2. Unpaired proposals: These are hyperlinks that did not ter um documento associado imediatamente a seguir.
 
 {structured_data_text}
 
-Based on this structured data, create a JSON array where each element represents one proposal that was voted on. For each proposal, extract:
+Com base nestes dados estruturados, crie um array JSON onde cada elemento representa UMA proposta (hiperlink) que foi votada.
+- Se um grupo de hiperlinks compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"), crie um objeto JSON separado para CADA hiperlink desse grupo (listados sob "HIPERLINKS NESTE GRUPO"). O 'voting_summary' e 'approval_status' para cada uma dessas propostas serão derivados da tabela COMPARTILHADA.
+- Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação conforme descrito abaixo.
 
-1. 'proposal_name': The proposal identifier from the hyperlink text (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1")
-2. 'proposal_link': The URI/hyperlink for this proposal
-3. 'voting_summary': The voting breakdown by party from the associated table, OR if no table is present but the proposal appears in the "without individual voting tables" section, check if there are any text indicators in the original document suggesting unanimous approval or group voting.
-4. 'approval_status': An integer, 1 if the proposal was approved, 0 if it was rejected. If unclear, set to null.
+Para cada proposta (hiperlink), extraia:
 
-For voting_summary format:
-- If there's a voting table: Parse the table to extract vote counts for each party (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
-- Use format: {{"PartyName": {{"Favor": X, "Contra": Y, "Abstenção": Z, "Não Votaram": W, "TotalDeputados": Total}}}}
-- If the table uses 'X' marks: The 'X' indicates all MPs from that party voted in that manner. Use the total number shown for that party.
-- If no individual table but likely unanimous: Indicate unanimous voting with appropriate party breakdowns if you can infer them, or mark as unanimous.
+1. 'proposal_name': O identificador da proposta a partir do texto do hiperlink (por exemplo, "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1"). Isso vem do 'TEXTO' do hiperlink (para propostas agrupadas) ou 'TEXTO DA PROPOSTA' (para propostas não pareadas). O Identificador NUNCA será "Texto Final" ou similar, apesar do hyperlink poder ter esse texto.
+2. 'proposal_link': O URI/hiperlink para esta proposta. Isso vem do 'URI' do hiperlink.
+3. 'voting_summary': O detalhamento da votação por partido.
+    - Para propostas em um grupo com uma tabela compartilhada: Analise a tabela COMPARTILHADA para extrair as contagens de votos para cada partido (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
+    - Para propostas não pareadas: Se a proposta aparecer na seção "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS", verifique se há algum indicador de texto no documento original (não fornecido aqui, então infira se possível a partir do contexto ou padrões comuns como aprovação unânime para certos tipos de propostas) sugerindo aprovação unânime ou votação em grupo. Se não houver informação, defina como nulo.
+4. 'approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Se não estiver claro, defina como nulo. Isso é derivado do 'voting_summary'.
 
-Important notes:
-- Some proposals may be approved "por unanimidade" (unanimously) - these should still be included with voting_summary indicating unanimous approval and approval_status as 1.
-- Multiple proposals might share the same voting result if they were voted together
-- Always provide numerical counts in the voting_summary, not just 'X' marks
+Para o formato de voting_summary:
+- Se houver uma tabela de votação: Analise a tabela para extrair as contagens de votos para cada partido.
+- Use o formato: {{"NomeDoPartido": {{"Favor": X, "Contra": Y, "Abstenção": Z, "Não Votaram": W, "TotalDeputados": Total}}}}
+- Se a tabela usar marcas 'X': A marca 'X' indica que todos os MPs daquele partido votaram daquela maneira. Use o número total mostrado para aquele partido, se disponível, caso contrário, infira com base nos tamanhos típicos dos partidos, se necessário (menos ideal).
+- Se não houver tabela individual, mas for provavelmente unânime: Indique a votação unânime com as distribuições de partido apropriadas, se puder inferi-las, ou marque como unânime.
 
-Return only a valid JSON array. If you cannot determine voting information for a proposal, still include it with proposal_name and proposal_link, but set voting_summary to null and approval_status to null.
+Notas importantes:
+- Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
+- Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e status de aprovação como 1.
+- Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas (isso agora é tratado explicitamente pela estrutura agrupada).
+- Sempre forneça contagens numéricas no resumo da votação, não apenas marcas 'X'.
 
-Example format:
+Retorne apenas um array JSON válido. Cada objeto no array corresponde a um hiperlink/proposta.
+Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo e 'approval_status' como nulo.
+
+Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tabela, e uma proposta não pareada):
 [
-  {{
+  {{ // Do grupo, primeiro hiperlink
     "proposal_name": "Projeto de Lei 123/XV/2",
     "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=XXXXX",
-    "voting_summary": {{
+    "voting_summary": {{ // Derivado da tabela compartilhada
       "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
       "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
     }},
     "approval_status": 1
+  }},
+  {{ // Do mesmo grupo, segundo hiperlink
+    "proposal_name": "Alteração ao Projeto de Lei 123/XV/2",
+    "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=YYYYY",
+    "voting_summary": {{ // Derivado DA MESMA tabela compartilhada que acima
+      "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
+      "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
+    }},
+    "approval_status": 1
+  }},
+  {{ // Uma proposta não pareada
+    "proposal_name": "Voto de Pesar XYZ",
+    "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=ZZZZZ",
+    "voting_summary": null, // Ou inferido se unânime, por exemplo, {{"Unânime": {{"Favor": 200, ...}}}}
+    "approval_status": null // Ou inferido, por exemplo, 1 se aprovação unânime
   }}
 ]
 """
@@ -996,7 +1063,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 df.loc[new_row_idx, 'last_error_message'] = msg_or_path
                 df.loc[new_row_idx, 'overall_status'] = 'Failed Stage 1 (Session PDF Download)'
                 df.loc[new_row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
-            else: # Update existing placeholder if any
+            else:
                 idx_to_update = df[df['session_pdf_url'] == session_pdf_url].index
                 df.loc[idx_to_update, 'session_pdf_download_status'] = 'Download Failed'
                 df.loc[idx_to_update, 'session_date'] = session_date
