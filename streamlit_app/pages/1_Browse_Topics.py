@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 import re # For extracting BID
+from datetime import datetime
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -28,6 +29,31 @@ CATEGORY_MAPPING = {
 }
 
 categories = list(CATEGORY_MAPPING.values())
+
+# Government periods mapping
+GOVERNMENT_PERIODS = {
+    "Todos": {"start": None, "end": None},
+    "XXI Governo (Nov 2015 - Out 2019)": {
+        "start": datetime(2015, 11, 26),
+        "end": datetime(2019, 10, 26)
+    },
+    "XXII Governo (Out 2019 - Mar 2022)": {
+        "start": datetime(2019, 10, 26),
+        "end": datetime(2022, 3, 30)
+    },
+    "XXIII Governo (Mar 2022 - Abr 2024)": {
+        "start": datetime(2022, 3, 30),
+        "end": datetime(2024, 4, 2)
+    },
+    "XXIV Governo (Abr 2024 - Jun 2025)": {
+        "start": datetime(2024, 4, 2),
+        "end": datetime(2025, 6, 5)
+    },
+    "XXV Governo (Jun 2025 - Presente)": {
+        "start": datetime(2025, 6, 5),
+        "end": None
+    }
+}
 
 # --- Data Loading ---
 @st.cache_data
@@ -97,10 +123,13 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                 try:
                     if isinstance(proposal_category_raw, str):
                         proposal_category_list = json.loads(proposal_category_raw.replace("'", '"'))
+                        print(f"Parsed proposal_category_raw (str): {proposal_category_list}")  # Debugging line
                     elif isinstance(proposal_category_raw, list):
                         proposal_category_list = proposal_category_raw
+                        print(f"Parsed proposal_category_raw (list): {proposal_category_list}")  # Debugging line
                     proposal_category_list = [int(cat) for cat in proposal_category_list if str(cat).isdigit()]
-                except (json.JSONDecodeError, ValueError):
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Error parsing proposal_category_raw: {e}")  # Debugging line
                     proposal_category_list = []
 
             voting_breakdown_json = row.get('voting_details_json')
@@ -261,7 +290,8 @@ st.title("📜 Todas as Votações Parlamentares")
 st.markdown("Navegue pela lista de todas as votações registadas. Clique num item para ver os detalhes.")
 
 # --- Filters Section ---
-col_category, col_approval_status, col_proposing_party = st.columns([2, 1, 2])
+# First row of filters
+col_category, col_approval_status = st.columns([3, 2])
 
 with col_category:
     st.markdown("#### Filtrar por Categoria:")
@@ -287,16 +317,28 @@ with col_approval_status:
     )
     selected_approval_filter_val = approval_status_options[selected_approval_label]
 
+# Second row of filters
+col_proposing_party, col_government = st.columns([2, 2])
+
 with col_proposing_party:
     st.markdown("#### Proponente:")
     available_proposing_parties = []
     if not data_df.empty and 'proposal_proposing_party' in data_df.columns:
         available_proposing_parties = sorted(data_df['proposal_proposing_party'].dropna().unique())
     
-    selected_proposing_parties = st.multiselect(
+    selected_proposing_party = st.selectbox(
         label="Filtro Proponente",
         options=["Todos"] + available_proposing_parties,
-        default=["Todos"],
+        index=0,
+        label_visibility="collapsed"
+    )
+
+with col_government:
+    st.markdown("#### Governo:")
+    selected_government = st.selectbox(
+        label="Filtro por Período de Governo",
+        options=list(GOVERNMENT_PERIODS.keys()),
+        index=0,
         label_visibility="collapsed"
     )
 
@@ -330,9 +372,28 @@ if not data_df.empty:
             filtered_topics = filtered_topics[filtered_topics['proposal_approval_status'] == selected_approval_filter_val]
     
     # Apply proposing party filter
-    if "Todos" not in selected_proposing_parties and selected_proposing_parties:
-        filtered_topics = filtered_topics[filtered_topics['proposal_proposing_party'].isin(selected_proposing_parties)]
+    if selected_proposing_party != "Todos":
+        filtered_topics = filtered_topics[filtered_topics['proposal_proposing_party'] == selected_proposing_party]
 
+    # Apply government period filter
+    if selected_government != "Todos":
+        gov_period = GOVERNMENT_PERIODS[selected_government]
+        start_date = gov_period["start"]
+        end_date = gov_period["end"]
+        
+        # Filter by date range
+        if start_date and end_date:
+            # Both start and end dates defined
+            filtered_topics = filtered_topics[
+                (filtered_topics['session_date'] >= start_date) & 
+                (filtered_topics['session_date'] <= end_date)
+            ]
+        elif start_date and not end_date:
+            # Only start date (current government)
+            filtered_topics = filtered_topics[filtered_topics['session_date'] >= start_date]
+        elif end_date and not start_date:
+            # Only end date (shouldn't happen with current data, but handle gracefully)
+            filtered_topics = filtered_topics[filtered_topics['session_date'] <= end_date]
 
     # Sort by date
     if not filtered_topics.empty:
