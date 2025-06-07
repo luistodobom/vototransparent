@@ -78,7 +78,7 @@ def get_dataframe_columns():
         'proposal_document_local_path', 'proposal_doc_download_status', 'proposal_details_scrape_status',
         'proposal_summary_general', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 
         'proposal_summary_colloquial', 'proposal_category', 'proposal_summarize_status',
-        'proposal_approval_status', 'proposal_short_title', 
+        'proposal_approval_status', 'proposal_short_title', 'proposal_proposing_party', 
         'overall_status', 'last_error_message', 'last_processed_timestamp'
     ]
 
@@ -851,8 +851,9 @@ def summarize_proposal_text(proposal_document_path):
    10 - "Negocios Estrangeiros e Cooperacao Internacional"
    11 - "Ciencia, Tecnologia e Digital"
 6. "short_title": A concise title for the proposal, maximum 10 words.
+7. "proposing_party": The political party or entity that proposed this initiative (e.g., "PCP", "PS", "PSD", "Governo"). Extract this from the document text, often found near the proposal title or number. If not clearly identifiable, set to null.
 
-Return only a valid JSON object with these 6 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
+Return only a valid JSON object with these 7 fields. If the proposal fits multiple categories, include all relevant ones in the "categories" array.
 
 Example format:
 {
@@ -861,7 +862,8 @@ Example format:
   "fiscal_impact": "...",
   "colloquial_summary": "...",
   "categories": [4, 5],
-  "short_title": "Reforma do Sistema de Pensões"
+  "short_title": "Reforma do Sistema de Pensões",
+  "proposing_party": "PCP"
 }
 """
     summary_data, error = call_gemini_api(prompt, document_path=proposal_document_path, expect_json=True)
@@ -872,7 +874,7 @@ Example format:
     if not isinstance(summary_data, dict):
         return None, f"LLM did not return a JSON object as expected. Got: {type(summary_data)}"
     
-    required_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 'colloquial_summary', 'categories', 'short_title']
+    required_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 'colloquial_summary', 'categories', 'short_title', 'proposing_party']
     for field in required_fields:
         if field not in summary_data:
             return None, f"Missing required field '{field}' in LLM response: {summary_data}"
@@ -1070,7 +1072,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             proposal_name = proposal_data.get('proposal_name')
             proposal_gov_link = proposal_data.get('proposal_link') # May be null
             voting_summary = proposal_data.get('voting_summary')
-            approval_status = proposal_data.get('approval_status') # Added
+            approval_status = proposal_data.get('approval_status') 
 
             if not proposal_name:
                 print(f"Skipping proposal with no name from {session_pdf_url}")
@@ -1094,7 +1096,8 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             df.loc[row_idx, 'proposal_gov_link'] = proposal_gov_link
             df.loc[row_idx, 'voting_details_json'] = json.dumps(voting_summary) if voting_summary else None
             df.loc[row_idx, 'session_parse_status'] = 'Success'
-            df.loc[row_idx, 'proposal_approval_status'] = approval_status # Added
+            df.loc[row_idx, 'proposal_approval_status'] = approval_status 
+            # proposing_party will be filled in Stage 4
             df.loc[row_idx, 'overall_status'] = 'Pending Further Stages' # Initial status after session parse
             df.loc[row_idx, 'last_error_message'] = None # Clear previous errors for this row
             df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
@@ -1137,7 +1140,8 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
                     df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
                     df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
-                    df.loc[row_idx, 'proposal_short_title'] = summary_data['short_title'] # Added
+                    df.loc[row_idx, 'proposal_short_title'] = summary_data['short_title'] 
+                    df.loc[row_idx, 'proposal_proposing_party'] = summary_data['proposing_party'] # Added from LLM summary
                     df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
                     df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
                 df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
