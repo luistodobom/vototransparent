@@ -731,65 +731,65 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links):
 
 def create_structured_data_prompt(structured_data_text):
     """Create the LLM prompt for structured data, accommodating grouped hyperlinks."""
-    prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have extracted structured data from the PDF that contains:
-
-1. HYPERLINKS: A list of all hyperlinks found in the document. These may or may not correspond to actual legislative proposals - some might be previous versions, supplementary documents, or other references. Your job is to identify which ones are the actual proposals that were voted on.
-
-2. VOTING TABLES: Tables that contain voting results by political party. Each table is associated with a group of hyperlinks that appeared before it on the page. However, within each group, typically only ONE hyperlink represents the actual proposal that the table refers to - the others are often previous versions or related documents.
-
-3. UNMATCHED HYPERLINKS: Hyperlinks that don't have an associated voting table. For these, the PDF document text (not provided separately here, but consider the context) may explain what happened - they might have been approved unanimously, withdrawn, or voted on in groups.
+    prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have already extracted structured proposal data from the PDF. This data consists of:
+1. Groups of proposals: Each group contains one or more hyperlinks (propostas) that are associated with a single voting table that immediately follows them on the page. All hyperlinks in a group share the same voting table.
+2. Unpaired proposals: These are hyperlinks that did not ter um documento associado imediatamente a seguir.
 
 {structured_data_text}
 
-Based on this structured data, create a JSON array where each element represents ONE actual legislative proposal that was voted on.
+Com base nestes dados estruturados, crie um array JSON onde cada elemento representa UMA proposta (hiperlink) que foi votada.
+- Se um grupo de hiperlinks compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"), crie um objeto JSON unico com o hyperlink principal e ignore os outros.
+- Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação conforme descrito abaixo.
 
-Your tasks:
-1. IDENTIFY ACTUAL PROPOSALS: From all the hyperlinks, determine which ones represent actual legislative proposals (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1") rather than previous versions, supplementary guides, or other documents.
+Para cada proposta (hiperlink), extraia:
 
-2. MATCH PROPOSALS TO TABLES: For hyperlink groups that share a voting table, identify which single hyperlink in that group represents the actual proposal that the voting table refers to. Ignore the other hyperlinks in the group (they are likely previous versions or related documents).
+1. 'proposal_name': O identificador da proposta a partir do texto do hiperlink (por exemplo, "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1"). Isso vem do 'TEXTO' do hiperlink (para propostas agrupadas) ou 'TEXTO DA PROPOSTA' (para propostas não pareadas). O Identificador NUNCA será "Texto Final" ou similar, apesar do hyperlink poder ter esse texto.
+2. 'proposal_link': O URI/hiperlink para esta proposta. Isso vem do 'URI' do hiperlink.
+3. 'voting_summary': O detalhamento da votação por partido.
+    - Para propostas em um grupo com uma tabela compartilhada: Analise a tabela COMPARTILHADA para extrair as contagens de votos para cada partido (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
+    - Para propostas não pareadas: Se a proposta aparecer na seção "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS", verifique se há algum indicador de texto no documento original (não fornecido aqui, então infira se possível a partir do contexto ou padrões comuns como aprovação unânime para certos tipos de propostas) sugerindo aprovação unânime ou votação em grupo. Se não houver informação, defina como nulo.
+4. 'approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Se não estiver claro, defina como nulo. Isso é derivado do 'voting_summary'.
 
-3. HANDLE UNMATCHED PROPOSALS: For hyperlinks without associated tables, these proposals may have been:
-   - Approved unanimously (common for certain types of proposals)
-   - Withdrawn or postponed
-   - Voted on as part of a group
-   
-For each identified proposal, extract:
+Para o formato de voting_summary:
+- Se houver uma tabela de votação: Analise a tabela para extrair as contagens de votos para cada partido.
+- Use o formato: {{"NomeDoPartido": {{"Favor": X, "Contra": Y, "Abstenção": Z, "Não Votaram": W, "TotalDeputados": Total}}}}
+- Se a tabela usar marcas 'X': A marca 'X' indica que todos os MPs daquele partido votaram daquela maneira. Use o número total mostrado para aquele partido, se disponível, caso contrário, infira com base nos tamanhos típicos dos partidos, se necessário (menos ideal).
+- Se não houver tabela individual, mas for provavelmente unânime: Indique a votação unânime com as distribuições de partido apropriadas, se puder inferi-las, ou marque como unânime.
 
-1. 'proposal_name': The legislative identifier from the hyperlink text (e.g., "Projeto de Lei 404/XVI/1", "Proposta de Lei 39/XVI/1"). Never use generic text like "Texto Final" even if that's what the hyperlink says - look for the actual proposal identifier.
+Notas importantes:
+- Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
+- Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e status de aprovação como 1.
+- Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas (isso agora é tratado explicitamente pela estrutura agrupada).
+- Sempre forneça contagens numéricas no resumo da votação, não apenas marcas 'X'.
 
-2. 'proposal_link': The URI for this proposal.
+Retorne apenas um array JSON válido. Cada objeto no array corresponde a um hiperlink/proposta.
+Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo e 'approval_status' como nulo.
 
-3. 'voting_summary': Detailed voting breakdown by party:
-   - If matched to a table: Extract vote counts for each party (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
-   - If unmatched: Infer from context if it was unanimous approval or set to null if unknown
-   - Format: {{"PartyName": {{"Favor": X, "Contra": Y, "Abstenção": Z, "Não Votaram": W, "TotalDeputados": Total}}}}
-
-4. 'approval_status': Integer, 1 if approved, 0 if rejected, null if unclear.
-
-Important guidelines:
-- Filter out non-proposal hyperlinks (supplementary guides, previous versions, etc.)
-- For grouped hyperlinks sharing a table, select only the primary proposal (usually the most recent version or the one with the most specific identifier)
-- Provide numeric vote counts, not just 'X' marks
-- Include unanimous approvals with appropriate status and voting summary
-
-Return only a valid JSON array. Include proposals even if voting information is incomplete.
-
-Example format:
+Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tabela, e uma proposta não pareada):
 [
-  {{
+  {{ // Do grupo, primeiro hiperlink
     "proposal_name": "Projeto de Lei 123/XV/2",
     "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=XXXXX",
-    "voting_summary": {{
+    "voting_summary": {{ // Derivado da tabela compartilhada
       "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
       "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
     }},
     "approval_status": 1
   }},
-  {{
+  {{ // Do mesmo grupo, segundo hiperlink
+    "proposal_name": "Alteração ao Projeto de Lei 123/XV/2",
+    "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=YYYYY",
+    "voting_summary": {{ // Derivado DA MESMA tabela compartilhada que acima
+      "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
+      "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
+    }},
+    "approval_status": 1
+  }},
+  {{ // Uma proposta não pareada
     "proposal_name": "Voto de Pesar XYZ",
     "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=ZZZZZ",
-    "voting_summary": {{"Unânime": {{"Favor": 200, "Contra": 0, "Abstenção": 0, "Não Votaram": 0, "TotalDeputados": 200}}}},
-    "approval_status": 1
+    "voting_summary": null, // Ou inferido se unânime, por exemplo, {{"Unânime": {{"Favor": 200, ...}}}}
+    "approval_status": null // Ou inferido, por exemplo, 1 se aprovação unânime
   }}
 ]
 """
