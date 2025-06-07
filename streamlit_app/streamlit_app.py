@@ -356,9 +356,13 @@ if not data_df.empty:
         placeholder="Pesquisar por palavra-chave...", # Simpler placeholder
         # "Procure por título, número da iniciativa ou palavras-chave na descrição:", # Original label
         # placeholder="Ex: Orçamento do Estado, PL/123/XVI/1, habitação" # Original placeholder
+        value=st.session_state.get("last_search_query", "")  # Restore search query if coming back
     )
 
     if search_query:
+        # Store search query in session state for back navigation
+        st.session_state.last_search_query = search_query
+        
         # Perform a case-insensitive search across relevant fields
         # Consolidate data to one row per issue for search results
         # Ensure 'issue_identifier' is unique for drop_duplicates
