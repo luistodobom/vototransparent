@@ -19,14 +19,14 @@ st.set_page_config(
 
 # --- Party Metadata and Chart Configuration ---
 PARTY_METADATA = {
-    "PS": {"mps": 120, "color": "#FF69B4"},  # Pink
-    "PSD": {"mps": 77, "color": "#FF8C00"},   # Dark Orange
-    "CH": {"mps": 12, "color": "#000080"},    # Navy
-    "IL": {"mps": 8, "color": "#00BFFF"},     # Deep Sky Blue
-    "PCP": {"mps": 6, "color": "#CC0000"},    # Red
-    "BE": {"mps": 5, "color": "#8B0000"},     # Dark Red / Maroon
-    "PAN": {"mps": 1, "color": "#008000"},    # Green
-    "L": {"mps": 1, "color": "#20B2AA"}       # Light Sea Green
+    "PS": {"mps": 120, "color": "#CE18BC"},  # Pink
+    "PSD": {"mps": 77, "color": "#F26932"},   # Dark Orange
+    "CH": {"mps": 12, "color": "#001BA4"},    # Navy
+    "IL": {"mps": 8, "color": "#329DC1"},     # Deep Sky Blue
+    "PCP": {"mps": 6, "color": "#D01F20"},    # Red
+    "BE": {"mps": 5, "color": "#7E1CAA"},     # Dark Red / Maroon
+    "PAN": {"mps": 1, "color": "#76A639"},    # Green
+    "L": {"mps": 1, "color": "#2D2C31"}       # Light Sea Green
 }
 ORDERED_PARTIES = ["PCP", "BE",  "L", "PS", "PAN", "PSD", "IL", "CH"] # Left to Right overall
 
@@ -95,7 +95,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
                           width=DEFAULT_WEDGE_WIDTH, color=chosen_color, alpha=current_alpha, 
-                          edgecolor='black', linewidth=0.5)
+                          edgecolor=base_color, linewidth=1.5)  # Changed: use base_color for border and increased linewidth
             ax.add_patch(wedge)
 
             mid_angle_rad = math.radians((start_wedge_angle_deg + end_wedge_angle_deg) / 2)
@@ -220,12 +220,12 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
     if handles:
         ax.legend(handles=handles, 
                   loc='lower center', 
-                  bbox_to_anchor=(0.5, -0.08), # Adjusted y-offset from -0.12 to -0.08
+                  bbox_to_anchor=(0.5, 0.1), # Changed: moved much closer from -0.08 to -0.02
                   ncol=len(handles), 
                   fontsize=8, 
                   frameon=False)
     
-    fig.subplots_adjust(bottom=0.15) 
+    fig.subplots_adjust(bottom=0.08)  # Changed: reduced from 0.15 to 0.08 since legend is closer
     
     return fig
 
@@ -583,12 +583,21 @@ if issue_id_param and not data_df.empty:
 
         with col_summary:
             # --- Summary Section ---
+            st.subheader("🏛️ Resumo da Proposta")
             with st.container(border=True): 
                 # Show proposing party and short title prominently
+                proposing_party_text = ""
                 if pd.notna(topic_info.get('proposal_proposing_party')) and topic_info['proposal_proposing_party'] != 'N/A':
-                    st.markdown(f"**Proposta {topic_info['proposal_proposing_party']}**")
+                    proposing_party_text = topic_info['proposal_proposing_party']
                 else:
-                    st.markdown("**Proposta**")
+                    proposing_party_text = "Proposta"
+                
+                # Add session date if available
+                if pd.notna(topic_info.get('session_date')):
+                    date_str = topic_info['session_date'].strftime("%Y-%m-%d")
+                    st.markdown(f"**Proposta: {proposing_party_text} - {date_str}**")
+                else:
+                    st.markdown(f"**Proposta: {proposing_party_text}**")
                 
                 # Show short title if available, otherwise use main title
                 if pd.notna(topic_info.get('proposal_short_title')) and topic_info['proposal_short_title'] != 'N/A':
@@ -631,15 +640,15 @@ if issue_id_param and not data_df.empty:
                 # Clean approval status display
                 vote_outcome = topic_info['vote_outcome']
                 if vote_outcome == "Aprovado":
-                    st.markdown("✅ **Aprovado**")
+                    st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
                 elif vote_outcome == "Rejeitado":
-                    st.markdown("❌ **Rejeitado**")
+                    st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f"❓ **{vote_outcome}**")
+                    st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
         
         with col_viz:
             # --- Parliament Visualization ---
-            st.subheader("🏛️ Votação no Parlamento")
+            # st.subheader("🏛️ Votação no Parlamento")
             if parliament_fig:
                 st.pyplot(parliament_fig)
             elif not viz_parties_df.empty: # If we had parties but still no fig (e.g. all neutral)
