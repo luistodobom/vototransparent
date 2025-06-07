@@ -63,7 +63,6 @@ st.markdown("""
         display: none; /* Hide the label above search input if placeholder is enough */
     }
 
-
     /* Button styling for search results */
     div[data-testid="stButton"] > button {
         border-radius: 8px;
@@ -94,7 +93,6 @@ st.markdown("""
          box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
-
     /* Footer styling */
     .footer {
         text-align: center;
@@ -103,6 +101,11 @@ st.markdown("""
         border-top: 1px solid #eee;
         font-size: 0.9em;
         color: #777;
+    }
+
+    /* Hide Streamlit's default sidebar navigation for multi-page apps */
+    div[data-testid="stSidebarNav"] {
+        display: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -517,3 +520,7 @@ else:
 
 # --- Footer ---
 st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. Reporte erros enviando email para erros@vototransparente.pt</div>", unsafe_allow_html=True)
+
+# --- Consistent Sidebar Navigation ---
+st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
+st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")

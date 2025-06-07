@@ -17,6 +17,15 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+    /* Hide Streamlit's default sidebar navigation for multi-page apps */
+    div[data-testid="stSidebarNav"] {
+        display: none;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- Party Metadata and Chart Configuration ---
 PARTY_METADATA = {
     "PS": {"mps": 120, "color": "#CE18BC"},  # Pink

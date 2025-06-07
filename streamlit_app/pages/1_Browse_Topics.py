@@ -12,6 +12,15 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+    /* Hide Streamlit's default sidebar navigation for multi-page apps */
+    div[data-testid="stSidebarNav"] {
+        display: none;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Category mapping for display
 CATEGORY_MAPPING = {
     0: "Saúde e Cuidados Sociais",
@@ -470,5 +479,6 @@ if not data_df.empty:
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro.")
 
+
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
-# Removed the duplicate sidebar link to "Todas as Votações" as we are on this page.
+st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
