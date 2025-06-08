@@ -339,6 +339,8 @@ def extract_hyperlink_table_pairs_and_unpaired_links(pdf_path):
         for link in links:
             if link['kind'] == fitz.LINK_URI:
                 uri = link['uri']
+                if ".pdf" in uri.lower():
+                    continue
                 rect = link['from']  # fitz.Rect object for the link area
                 link_text = page_fitz.get_text("text", clip=rect).strip()
                 
@@ -605,6 +607,8 @@ def extract_hyperlink_table_pairs_for_page_range(pdf_path, start_page, end_page)
         for link in links:
             if link['kind'] == fitz.LINK_URI:
                 uri = link['uri']
+                if ".pdf" in uri.lower():
+                    continue
                 rect = link['from']  # fitz.Rect object for the link area
                 link_text = page_fitz.get_text("text", clip=rect).strip()
                 
@@ -731,14 +735,18 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links):
 
 def create_structured_data_prompt(structured_data_text):
     """Create the LLM prompt for structured data, accommodating grouped hyperlinks."""
-    prompt = f"""You are analyzing a Portuguese parliamentary voting record. I have already extracted structured proposal data from the PDF. This data consists of:
-1. Groups of proposals: Each group contains one or more hyperlinks (propostas) that are associated with a single voting table that immediately follows them on the page. All hyperlinks in a group share the same voting table.
-2. Unpaired proposals: These are hyperlinks that did not ter um documento associado imediatamente a seguir.
+    prompt = f"""Você está analisando um registro de votações parlamentares portuguesas. Eu já extraí dados estruturados de propostas do PDF. Estes dados consistem em:
+1. Grupos de propostas: Cada grupo contém um ou mais hiperlinks (propostas) que *aparentam estar* associados a uma única tabela de votação encontrada após eles na mesma página. **A lista de hiperlinks fornecida para cada "grupo" é uma extração de melhor esforço de links encontrados textualmente acima de uma tabela. É possível que nem todos os hiperlinks listados sejam relevantes para essa tabela específica, e alguns podem não estar relacionados ou ser de contextos diferentes. Sua tarefa inclui discernir as propostas reais relacionadas à tabela a partir desta lista.**
+2. Propostas não pareadas: Estes são hiperlinks que não tinham uma tabela imediatamente a seguir.
 
 {structured_data_text}
 
 Com base nestes dados estruturados, crie um array JSON onde cada elemento representa UMA proposta (hiperlink) que foi votada.
-- Se um grupo de hiperlinks compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"), crie um objeto JSON unico com o hyperlink principal e ignore os outros.
+**A associação de hiperlinks a tabelas é uma tentativa baseada na proximidade no documento. Nem todos os hiperlinks listados acima de uma tabela pertencem necessariamente a essa votação; alguns podem ser de outros contextos. O modelo deve analisar criticamente para determinar a relevância.**
+
+- **Para "GRUPOS" de hiperlinks que parecem compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"):**
+    - **Analise cuidadosamente cada hiperlink no grupo. É possível que múltiplos hiperlinks sejam propostas válidas que foram votadas em bloco, usando a mesma tabela de resultados.**
+    - **Se este for o caso, você DEVE criar um objeto JSON separado para CADA UMA dessas propostas (hiperlinks) válidas. Cada um desses objetos JSON deve conter os detalhes da votação da tabela compartilhada.** Não agrupe várias propostas em um único objeto JSON nem ignore propostas válidas dentro do grupo. Filtre quaisquer hiperlinks que claramente não sejam propostas votadas (ex: links para páginas genéricas, documentos suplementares não votados).
 - Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação conforme descrito abaixo.
 
 Para cada proposta (hiperlink), extraia:
@@ -759,7 +767,7 @@ Para o formato de voting_summary:
 Notas importantes:
 - Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
 - Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e status de aprovação como 1.
-- Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas (isso agora é tratado explicitamente pela estrutura agrupada).
+- Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas. **Conforme instruído acima, crie um objeto JSON separado para cada proposta nestes casos.**
 - Sempre forneça contagens numéricas no resumo da votação, não apenas marcas 'X'.
 
 Retorne apenas um array JSON válido. Cada objeto no array corresponde a um hiperlink/proposta.
@@ -767,7 +775,7 @@ Se você não conseguir determinar as informações de votação para uma propos
 
 Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tabela, e uma proposta não pareada):
 [
-  {{ // Do grupo, primeiro hiperlink
+  {{ // Do grupo, primeiro hiperlink (assumindo que é uma proposta válida relacionada à tabela)
     "proposal_name": "Projeto de Lei 123/XV/2",
     "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=XXXXX",
     "voting_summary": {{ // Derivado da tabela compartilhada
@@ -776,7 +784,7 @@ Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tab
     }},
     "approval_status": 1
   }},
-  {{ // Do mesmo grupo, segundo hiperlink
+  {{ // Do mesmo grupo, segundo hiperlink (assumindo que é outra proposta válida relacionada à mesma tabela)
     "proposal_name": "Alteração ao Projeto de Lei 123/XV/2",
     "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=YYYYY",
     "voting_summary": {{ // Derivado DA MESMA tabela compartilhada que acima
