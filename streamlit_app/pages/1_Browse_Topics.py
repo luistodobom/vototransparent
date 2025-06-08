@@ -132,13 +132,13 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                 try:
                     if isinstance(proposal_category_raw, str):
                         proposal_category_list = json.loads(proposal_category_raw.replace("'", '"'))
-                        print(f"Parsed proposal_category_raw (str): {proposal_category_list}")  # Debugging line
+                        # print(f"Parsed proposal_category_raw (str): {proposal_category_list}")  # Debugging line
                     elif isinstance(proposal_category_raw, list):
                         proposal_category_list = proposal_category_raw
-                        print(f"Parsed proposal_category_raw (list): {proposal_category_list}")  # Debugging line
+                        # print(f"Parsed proposal_category_raw (list): {proposal_category_list}")  # Debugging line
                     proposal_category_list = [int(cat) for cat in proposal_category_list if str(cat).isdigit()]
                 except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Error parsing proposal_category_raw: {e}")  # Debugging line
+                    # print(f"Error parsing proposal_category_raw: {e}")  # Debugging line
                     proposal_category_list = []
 
             voting_breakdown_json = row.get('voting_details_json')

@@ -360,10 +360,11 @@ if not data_df.empty:
 
     # --- Search Functionality ---
     search_query = st.text_input(
-        "", 
+        "Pesquisar propostas", # Add a descriptive label
         placeholder="Pesquisar por palavra-chave...",
         value=st.session_state.search_query,  # Restore previous search query
-        key="search_input"
+        key="search_input",
+        label_visibility="collapsed" # Add this if you want to hide the label "Pesquisar propostas"
     )
 
     # Update session state when search query changes

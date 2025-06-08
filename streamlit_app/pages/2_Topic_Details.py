@@ -111,7 +111,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
-                          width=DEFAULT_WEDGE_WIDTH, color=chosen_color, alpha=current_alpha, 
+                          width=DEFAULT_WEDGE_WIDTH, facecolor=chosen_color, alpha=current_alpha, 
                           edgecolor=base_color, linewidth=linewidth)
             ax.add_patch(wedge)
 
@@ -175,7 +175,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
-                          width=DEFAULT_WEDGE_WIDTH, color=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
+                          width=DEFAULT_WEDGE_WIDTH, facecolor=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
                           edgecolor='black', linewidth=linewidth)
             ax.add_patch(wedge)
 
@@ -221,7 +221,7 @@ def generate_parliament_viz(all_party_vote_data_with_stance):
             
             wedge = Wedge(center=(0, 0), r=DEFAULT_WEDGE_RADIUS, 
                           theta1=start_wedge_angle_deg, theta2=end_wedge_angle_deg, 
-                          width=DEFAULT_WEDGE_WIDTH, color=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
+                          width=DEFAULT_WEDGE_WIDTH, facecolor=ABSTAIN_COLOR, alpha=ABSTAIN_ALPHA, 
                           edgecolor='black', linewidth=linewidth)
             ax.add_patch(wedge)
 
