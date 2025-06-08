@@ -566,7 +566,7 @@ else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
 # --- Footer ---
-st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. <a href=https://github.com/luistodobom/vototransparente/issues/new>Reporte erros no Github.</a></div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. <a href=https://github.com/luistodobom/vototransparente/issues>Reporte erros no Github.</a></div>", unsafe_allow_html=True)
 
 # --- Consistent Sidebar Navigation ---
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
