@@ -408,8 +408,8 @@ if not data_df.empty:
             # Group results by date for display
             if 'session_date' in results.columns:
                 grouped_results = {}
-                for _, row in results.iterrows():
-                    date_key = row['session_date']
+                for _, row_data in results.iterrows(): # Changed variable name to avoid conflict
+                    date_key = row_data['session_date']
                     if pd.isna(date_key):
                         date_str = "Data não disponível"
                     else:
@@ -417,23 +417,71 @@ if not data_df.empty:
                     
                     if date_str not in grouped_results:
                         grouped_results[date_str] = []
-                    grouped_results[date_str].append(row)
+                    grouped_results[date_str].append(row_data)
 
                 # Display grouped results
                 for date_str, results_for_date in grouped_results.items():
                     st.markdown(f"### {date_str}")
                     
-                    for row in results_for_date:
+                    for row in results_for_date: # This is the 'row' from the original code
                         with st.container(border=True):
                             col1, col2 = st.columns([3, 1])
                             with col1:
+                                # --- Resumo da Proposta ---
+                                proposing_party_text = row.get('proposal_proposing_party', 'N/A')
+                                if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
+                                    proposing_party_text = "Iniciativa"
+
+                                session_date_str_display = ""
+                                if pd.notna(row.get('session_date')):
+                                    session_date_str_display = row['session_date'].strftime("%d/%m/%Y")
+                                    st.markdown(f"**{proposing_party_text} - {session_date_str_display}**")
+                                else:
+                                    st.markdown(f"**{proposing_party_text}**")
+
                                 st.markdown(f"#### {row['full_title']}")
                                 if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                     st.markdown(f"*{row['proposal_short_title']}*")
-                                if pd.notna(row['description']):
-                                    st.markdown(f"_{row['description']}_")
+
+                                # Calculate party stances for this proposal
+                                parties_favor_summary = []
+                                parties_against_summary = []
+                                parties_abstention_summary = []
+                                if pd.notna(row['issue_identifier']):
+                                    current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(row['issue_identifier'])]
+                                    for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
+                                        if party_row_detail['party'] == 'N/A': continue
+                                        party_name = party_row_detail['party']
+                                        favor_votes = int(party_row_detail.get('votes_favor', 0))
+                                        against_votes = int(party_row_detail.get('votes_against', 0))
+                                        abstention_votes = int(party_row_detail.get('votes_abstention', 0))
+                                        
+                                        if favor_votes > against_votes and favor_votes > abstention_votes:
+                                            parties_favor_summary.append(party_name)
+                                        elif against_votes > favor_votes and against_votes > abstention_votes:
+                                            parties_against_summary.append(party_name)
+                                        elif abstention_votes > favor_votes and abstention_votes > against_votes:
+                                            parties_abstention_summary.append(party_name)
+                                
+                                favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
+                                st.markdown(f"**A Favor:** {favor_text}")
+                                contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
+                                st.markdown(f"**Contra:** {contra_text}")
+                                abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
+                                st.markdown(f"**Abstenção:** {abstention_text}")
+                                st.markdown("")
+
+                                vote_outcome = row.get('vote_outcome', 'N/A')
+                                if vote_outcome == "Aprovado":
+                                    st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
+                                elif vote_outcome == "Rejeitado":
+                                    st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
+
                                 if pd.notna(row['issue_identifier']):
                                     st.caption(f"ID: {row['issue_identifier']}")
+                                # --- End Resumo da Proposta ---
 
                             with col2:
                                 if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
@@ -447,17 +495,13 @@ if not data_df.empty:
                                     })
                                     st.switch_page("pages/2_Topic_Details.py")
 
-                            # Display vote outcome with styled icons
-                            vote_outcome = row.get('vote_outcome', 'N/A')
-                            if vote_outcome == "Aprovado":
-                                st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
-                            elif vote_outcome == "Rejeitado":
-                                st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-
                             # Expander for other descriptions
                             with st.expander("Mais detalhes da proposta"):
+                                if pd.notna(row['description']) and row['description'].strip() and row['description'] != 'Descrição não disponível.':
+                                    st.markdown(f"**Descrição Geral:**")
+                                    st.markdown(f"_{row['description']}_")
+                                    st.markdown("---") # Separator if other details follow
+                                
                                 if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
                                     st.markdown("**Análise:**")
                                     st.markdown(row['proposal_summary_analysis'])
@@ -473,21 +517,66 @@ if not data_df.empty:
                                     st.markdown("Não há detalhes adicionais disponíveis.")
             else:
                 # Fallback to original display if no session_date
-                for row in results.iterrows():
-                    _, row = row  # Unpack the tuple from iterrows()
+                for iter_idx, row_tuple in enumerate(results.iterrows()): # Use enumerate for unique keys if needed
+                    _, row = row_tuple  # Unpack the tuple from iterrows()
                     with st.container(border=True):
                         col1, col2 = st.columns([3, 1])
                         with col1:
+                            # --- Resumo da Proposta ---
+                            proposing_party_text = row.get('proposal_proposing_party', 'N/A')
+                            if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
+                                proposing_party_text = "Iniciativa"
+
+                            # Date is not available in this fallback, so only party
+                            st.markdown(f"**{proposing_party_text}**")
+
                             st.markdown(f"#### {row['full_title']}")
                             if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                 st.markdown(f"*{row['proposal_short_title']}*")
-                            if pd.notna(row['description']):
-                                st.markdown(f"_{row['description']}_")
+
+                            # Calculate party stances for this proposal
+                            parties_favor_summary = []
+                            parties_against_summary = []
+                            parties_abstention_summary = []
+                            if pd.notna(row['issue_identifier']):
+                                current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(row['issue_identifier'])]
+                                for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
+                                    if party_row_detail['party'] == 'N/A': continue
+                                    party_name = party_row_detail['party']
+                                    favor_votes = int(party_row_detail.get('votes_favor', 0))
+                                    against_votes = int(party_row_detail.get('votes_against', 0))
+                                    abstention_votes = int(party_row_detail.get('votes_abstention', 0))
+                                    
+                                    if favor_votes > against_votes and favor_votes > abstention_votes:
+                                        parties_favor_summary.append(party_name)
+                                    elif against_votes > favor_votes and against_votes > abstention_votes:
+                                        parties_against_summary.append(party_name)
+                                    elif abstention_votes > favor_votes and abstention_votes > against_votes:
+                                        parties_abstention_summary.append(party_name)
+                            
+                            favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
+                            st.markdown(f"**A Favor:** {favor_text}")
+                            contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
+                            st.markdown(f"**Contra:** {contra_text}")
+                            abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
+                            st.markdown(f"**Abstenção:** {abstention_text}")
+                            st.markdown("")
+
+                            vote_outcome = row.get('vote_outcome', 'N/A')
+                            if vote_outcome == "Aprovado":
+                                st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
+                            elif vote_outcome == "Rejeitado":
+                                st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
+
                             if pd.notna(row['issue_identifier']):
                                 st.caption(f"ID: {row['issue_identifier']}")
+                            # --- End Resumo da Proposta ---
 
                         with col2:
-                            if st.button(f"Ver detalhes", key=f"search_{row['issue_identifier']}", use_container_width=True):
+                            # Use iter_idx for a more robust unique key in fallback
+                            if st.button(f"Ver detalhes", key=f"search_fallback_{row['issue_identifier']}_{iter_idx}", use_container_width=True):
                                 st.session_state.last_page = 'home'
                                 st.session_state.selected_issue_identifier = str(row['issue_identifier'])
                                 # Set query parameters before navigation
@@ -498,17 +587,13 @@ if not data_df.empty:
                                 })
                                 st.switch_page("pages/2_Topic_Details.py")
 
-                        # Display vote outcome with styled icons
-                        vote_outcome = row.get('vote_outcome', 'N/A')
-                        if vote_outcome == "Aprovado":
-                            st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
-                        elif vote_outcome == "Rejeitado":
-                            st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
-                        else:
-                            st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-
                         # Expander for other descriptions
                         with st.expander("Mais detalhes da proposta"):
+                            if pd.notna(row['description']) and row['description'].strip() and row['description'] != 'Descrição não disponível.':
+                                st.markdown(f"**Descrição Geral:**")
+                                st.markdown(f"_{row['description']}_")
+                                st.markdown("---") # Separator if other details follow
+
                             if pd.notna(row['proposal_summary_analysis']) and row['proposal_summary_analysis'].strip():
                                 st.markdown("**Análise:**")
                                 st.markdown(row['proposal_summary_analysis'])

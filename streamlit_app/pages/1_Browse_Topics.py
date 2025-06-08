@@ -473,11 +473,67 @@ if not data_df.empty:
                     with st.container(border=True):
                         col1, col2 = st.columns([3, 1])
                         with col1:
+                            # --- Resumo da Proposta ---
+                            proposing_party_text = topic_row.get('proposal_proposing_party', 'N/A')
+                            if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
+                                proposing_party_text = "Iniciativa" # Default text
+
+                            # Date is already part of the group header (date_str), 
+                            # but can be repeated if desired or for context if date_str is "Data não disponível"
+                            current_date_str_display = date_str # Use the group date string
+                            if date_str == "Data não disponível" and pd.notna(topic_row.get('session_date')):
+                                # Fallback if main date_str is unavailable but row has it
+                                current_date_str_display = topic_row['session_date'].strftime("%d/%m/%Y")
+                            
+                            if current_date_str_display != "Data não disponível":
+                                st.markdown(f"**{proposing_party_text} - {current_date_str_display}**")
+                            else:
+                                st.markdown(f"**{proposing_party_text}**")
+                            
                             st.markdown(f"#### {topic_row['full_title']}")
                             if pd.notna(topic_row['proposal_short_title']) and topic_row['proposal_short_title'] != 'N/A':
                                 st.markdown(f"*{topic_row['proposal_short_title']}*")
-                            if pd.notna(topic_row['description']):
-                                st.markdown(f"_{topic_row['description']}_")
+
+                            # Calculate party stances for this proposal
+                            parties_favor_summary = []
+                            parties_against_summary = []
+                            parties_abstention_summary = []
+                            if pd.notna(topic_row['issue_identifier']):
+                                current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(topic_row['issue_identifier'])]
+                                for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
+                                    if party_row_detail['party'] == 'N/A': continue
+                                    party_name = party_row_detail['party']
+                                    favor_votes = int(party_row_detail.get('votes_favor', 0))
+                                    against_votes = int(party_row_detail.get('votes_against', 0))
+                                    abstention_votes = int(party_row_detail.get('votes_abstention', 0))
+                                    
+                                    if favor_votes > against_votes and favor_votes > abstention_votes:
+                                        parties_favor_summary.append(party_name)
+                                    elif against_votes > favor_votes and against_votes > abstention_votes:
+                                        parties_against_summary.append(party_name)
+                                    elif abstention_votes > favor_votes and abstention_votes > against_votes:
+                                        parties_abstention_summary.append(party_name)
+                            
+                            favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
+                            st.markdown(f"**A Favor:** {favor_text}")
+                            contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
+                            st.markdown(f"**Contra:** {contra_text}")
+                            abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
+                            st.markdown(f"**Abstenção:** {abstention_text}")
+                            st.markdown("")
+
+                            vote_outcome = topic_row.get('vote_outcome', 'N/A')
+                            if vote_outcome == "Aprovado":
+                                st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
+                            elif vote_outcome == "Rejeitado":
+                                st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
+
+                            if pd.notna(topic_row['issue_identifier']):
+                                st.caption(f"ID: {topic_row['issue_identifier']}")
+                            # --- End Resumo da Proposta ---
+                            
                         with col2:
                             if st.button(f"Ver detalhes 🗳️", key=f"btn_{topic_row['issue_identifier']}", use_container_width=True):
                                 st.session_state.last_page = 'browse'
@@ -493,17 +549,13 @@ if not data_df.empty:
                                 })
                                 st.switch_page("pages/2_Topic_Details.py")
                 
-                        # Display vote outcome with styled icons
-                        vote_outcome = topic_row.get('vote_outcome', 'N/A')
-                        if vote_outcome == "Aprovado":
-                            st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
-                        elif vote_outcome == "Rejeitado":
-                            st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
-                        else:
-                            st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-                        
                         # Expander for other descriptions
                         with st.expander("Mais detalhes da proposta"):
+                            if pd.notna(topic_row['description']) and topic_row['description'].strip() and topic_row['description'] != 'Descrição não disponível.':
+                                st.markdown(f"**Descrição Geral:**")
+                                st.markdown(f"_{topic_row['description']}_")
+                                st.markdown("---") # Separator if other details follow
+
                             if pd.notna(topic_row['proposal_summary_analysis']) and topic_row['proposal_summary_analysis'].strip():
                                 st.markdown("**Análise:**")
                                 st.markdown(topic_row['proposal_summary_analysis'])
