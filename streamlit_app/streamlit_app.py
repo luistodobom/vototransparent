@@ -430,7 +430,7 @@ if not data_df.empty:
                                 # --- Resumo da Proposta ---
                                 proposing_party_text = ""
                                 if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
-                                    proposing_party_text = row['proposal_propondo_party']
+                                    proposing_party_text = row['proposal_proposing_party']
 
                                 session_date_str_display = ""
                                 if pd.notna(row.get('session_date')):
@@ -443,9 +443,14 @@ if not data_df.empty:
                                     if proposing_party_text:
                                         st.markdown(f"**{proposing_party_text}**")
 
-                                st.markdown(f"#### {row['full_title']}")
+                                # Display project identifier as main title
                                 if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
-                                    st.markdown(f"*{row['proposal_short_title']}*")
+                                    st.markdown(f"#### {row['proposal_short_title']}")
+                                else:
+                                    st.markdown(f"#### {row['issue_identifier']}")
+                                
+                                # Display full title as descriptive text
+                                st.markdown(f"*{row['full_title']}*")
 
                                 vote_outcome = row.get('vote_outcome', 'N/A')
                                 if vote_outcome == "Aprovado":
@@ -497,16 +502,21 @@ if not data_df.empty:
                         with col1:
                             # --- Resumo da Proposta ---
                             proposing_party_text = ""
-                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_propondo_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
-                                proposing_party_text = row['proposal_propondo_party']
+                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
+                                proposing_party_text = row['proposal_proposing_party']
 
                             # Date is not available in this fallback, so only party
                             if proposing_party_text:
                                 st.markdown(f"**{proposing_party_text}**")
 
-                            st.markdown(f"#### {row['full_title']}")
+                            # Display project identifier as main title
                             if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
-                                st.markdown(f"*{row['proposal_short_title']}*")
+                                st.markdown(f"#### {row['proposal_short_title']}")
+                            else:
+                                st.markdown(f"#### {row['issue_identifier']}")
+                            
+                            # Display full title as descriptive text
+                            st.markdown(f"*{row['full_title']}*")
 
                             vote_outcome = row.get('vote_outcome', 'N/A')
                             if vote_outcome == "Aprovado":

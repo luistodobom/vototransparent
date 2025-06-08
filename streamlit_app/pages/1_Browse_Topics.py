@@ -494,9 +494,14 @@ if not data_df.empty:
                                 if proposing_party_text:
                                     st.markdown(f"**{proposing_party_text}**")
                             
-                            st.markdown(f"#### {topic_row['full_title']}")
+                            # Display project identifier as main title
                             if pd.notna(topic_row['proposal_short_title']) and topic_row['proposal_short_title'] != 'N/A':
-                                st.markdown(f"*{topic_row['proposal_short_title']}*")
+                                st.markdown(f"#### {topic_row['proposal_short_title']}")
+                            else:
+                                st.markdown(f"#### {topic_row['issue_identifier']}")
+                            
+                            # Display full title as descriptive text
+                            st.markdown(f"*{topic_row['full_title']}*")
 
                             vote_outcome = topic_row.get('vote_outcome', 'N/A')
                             if vote_outcome == "Aprovado":
