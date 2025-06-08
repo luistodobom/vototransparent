@@ -443,34 +443,6 @@ if not data_df.empty:
                                 if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                     st.markdown(f"*{row['proposal_short_title']}*")
 
-                                # Calculate party stances for this proposal
-                                parties_favor_summary = []
-                                parties_against_summary = []
-                                parties_abstention_summary = []
-                                if pd.notna(row['issue_identifier']):
-                                    current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(row['issue_identifier'])]
-                                    for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
-                                        if party_row_detail['party'] == 'N/A': continue
-                                        party_name = party_row_detail['party']
-                                        favor_votes = int(party_row_detail.get('votes_favor', 0))
-                                        against_votes = int(party_row_detail.get('votes_against', 0))
-                                        abstention_votes = int(party_row_detail.get('votes_abstention', 0))
-                                        
-                                        if favor_votes > against_votes and favor_votes > abstention_votes:
-                                            parties_favor_summary.append(party_name)
-                                        elif against_votes > favor_votes and against_votes > abstention_votes:
-                                            parties_against_summary.append(party_name)
-                                        elif abstention_votes > favor_votes and abstention_votes > against_votes:
-                                            parties_abstention_summary.append(party_name)
-                                
-                                favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
-                                st.markdown(f"**A Favor:** {favor_text}")
-                                contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
-                                st.markdown(f"**Contra:** {contra_text}")
-                                abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
-                                st.markdown(f"**Abstenção:** {abstention_text}")
-                                st.markdown("")
-
                                 vote_outcome = row.get('vote_outcome', 'N/A')
                                 if vote_outcome == "Aprovado":
                                     st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
@@ -478,9 +450,6 @@ if not data_df.empty:
                                     st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
                                 else:
                                     st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-
-                                if pd.notna(row['issue_identifier']):
-                                    st.caption(f"ID: {row['issue_identifier']}")
                                 # --- End Resumo da Proposta ---
 
                             with col2:
@@ -534,34 +503,6 @@ if not data_df.empty:
                             if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
                                 st.markdown(f"*{row['proposal_short_title']}*")
 
-                            # Calculate party stances for this proposal
-                            parties_favor_summary = []
-                            parties_against_summary = []
-                            parties_abstention_summary = []
-                            if pd.notna(row['issue_identifier']):
-                                current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(row['issue_identifier'])]
-                                for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
-                                    if party_row_detail['party'] == 'N/A': continue
-                                    party_name = party_row_detail['party']
-                                    favor_votes = int(party_row_detail.get('votes_favor', 0))
-                                    against_votes = int(party_row_detail.get('votes_against', 0))
-                                    abstention_votes = int(party_row_detail.get('votes_abstention', 0))
-                                    
-                                    if favor_votes > against_votes and favor_votes > abstention_votes:
-                                        parties_favor_summary.append(party_name)
-                                    elif against_votes > favor_votes and against_votes > abstention_votes:
-                                        parties_against_summary.append(party_name)
-                                    elif abstention_votes > favor_votes and abstention_votes > against_votes:
-                                        parties_abstention_summary.append(party_name)
-                            
-                            favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
-                            st.markdown(f"**A Favor:** {favor_text}")
-                            contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
-                            st.markdown(f"**Contra:** {contra_text}")
-                            abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
-                            st.markdown(f"**Abstenção:** {abstention_text}")
-                            st.markdown("")
-
                             vote_outcome = row.get('vote_outcome', 'N/A')
                             if vote_outcome == "Aprovado":
                                 st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
@@ -569,9 +510,6 @@ if not data_df.empty:
                                 st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-
-                            if pd.notna(row['issue_identifier']):
-                                st.caption(f"ID: {row['issue_identifier']}")
                             # --- End Resumo da Proposta ---
 
                         with col2:
@@ -623,7 +561,7 @@ else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
 # --- Footer ---
-st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. Reporte erros enviando email para erros@vototransparente.pt</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. <a href=https://github.com/luistodobom/vototransparente/issues/new>Reporte erros no Github.</a></div>", unsafe_allow_html=True)
 
 # --- Consistent Sidebar Navigation ---
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")

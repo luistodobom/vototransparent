@@ -494,34 +494,6 @@ if not data_df.empty:
                             if pd.notna(topic_row['proposal_short_title']) and topic_row['proposal_short_title'] != 'N/A':
                                 st.markdown(f"*{topic_row['proposal_short_title']}*")
 
-                            # Calculate party stances for this proposal
-                            parties_favor_summary = []
-                            parties_against_summary = []
-                            parties_abstention_summary = []
-                            if pd.notna(topic_row['issue_identifier']):
-                                current_proposal_all_party_votes_df = data_df[data_df['issue_identifier'] == str(topic_row['issue_identifier'])]
-                                for _, party_row_detail in current_proposal_all_party_votes_df.iterrows():
-                                    if party_row_detail['party'] == 'N/A': continue
-                                    party_name = party_row_detail['party']
-                                    favor_votes = int(party_row_detail.get('votes_favor', 0))
-                                    against_votes = int(party_row_detail.get('votes_against', 0))
-                                    abstention_votes = int(party_row_detail.get('votes_abstention', 0))
-                                    
-                                    if favor_votes > against_votes and favor_votes > abstention_votes:
-                                        parties_favor_summary.append(party_name)
-                                    elif against_votes > favor_votes and against_votes > abstention_votes:
-                                        parties_against_summary.append(party_name)
-                                    elif abstention_votes > favor_votes and abstention_votes > against_votes:
-                                        parties_abstention_summary.append(party_name)
-                            
-                            favor_text = ', '.join(sorted(list(set(parties_favor_summary)))) if parties_favor_summary else '-'
-                            st.markdown(f"**A Favor:** {favor_text}")
-                            contra_text = ', '.join(sorted(list(set(parties_against_summary)))) if parties_against_summary else '-'
-                            st.markdown(f"**Contra:** {contra_text}")
-                            abstention_text = ', '.join(sorted(list(set(parties_abstention_summary)))) if parties_abstention_summary else '-'
-                            st.markdown(f"**Abstenção:** {abstention_text}")
-                            st.markdown("")
-
                             vote_outcome = topic_row.get('vote_outcome', 'N/A')
                             if vote_outcome == "Aprovado":
                                 st.markdown('<span style="font-size: 1.2em;">✅ **Aprovado**</span>', unsafe_allow_html=True)
@@ -529,9 +501,6 @@ if not data_df.empty:
                                 st.markdown('<span style="font-size: 1.2em;">❌ **Rejeitado**</span>', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<span style="font-size: 1.2em;">❓ **{vote_outcome}**</span>', unsafe_allow_html=True)
-
-                            if pd.notna(topic_row['issue_identifier']):
-                                st.caption(f"ID: {topic_row['issue_identifier']}")
                             # --- End Resumo da Proposta ---
                             
                         with col2:
