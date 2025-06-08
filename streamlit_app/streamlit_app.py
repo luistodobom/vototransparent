@@ -10,7 +10,7 @@ st.set_page_config(
     page_title="VotoTransparente PT",
     page_icon="🇵🇹",
     layout="wide", # Keep wide for now, can adjust with CSS
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
     theme="light"
 )
 
