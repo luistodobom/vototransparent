@@ -605,17 +605,19 @@ if issue_id_param and not data_df.empty:
             with st.container(border=True): 
                 # Show proposing party and short title prominently
                 proposing_party_text = ""
-                if pd.notna(topic_info.get('proposal_proposing_party')) and topic_info['proposal_proposing_party'] != 'N/A':
+                if pd.notna(topic_info.get('proposal_proposing_party')) and topic_info['proposal_proposing_party'] != 'N/A' and str(topic_info['proposal_proposing_party']).lower() != 'nan':
                     proposing_party_text = topic_info['proposal_proposing_party']
-                else:
-                    proposing_party_text = "Proposta"
                 
                 # Add session date if available
                 if pd.notna(topic_info.get('session_date')):
                     date_str = topic_info['session_date'].strftime("%Y-%m-%d")
-                    st.markdown(f"**Proposta: {proposing_party_text} - {date_str}**")
+                    if proposing_party_text:
+                        st.markdown(f"**Proposta: {proposing_party_text} - {date_str}**")
+                    else:
+                        st.markdown(f"**Data: {date_str}**")
                 else:
-                    st.markdown(f"**Proposta: {proposing_party_text}**")
+                    if proposing_party_text:
+                        st.markdown(f"**Proposta: {proposing_party_text}**")
                 
                 # Show short title if available, otherwise use main title
                 if pd.notna(topic_info.get('proposal_short_title')) and topic_info['proposal_short_title'] != 'N/A':

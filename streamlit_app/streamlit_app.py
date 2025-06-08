@@ -428,16 +428,20 @@ if not data_df.empty:
                             col1, col2 = st.columns([3, 1])
                             with col1:
                                 # --- Resumo da Proposta ---
-                                proposing_party_text = row.get('proposal_proposing_party', 'N/A')
-                                if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
-                                    proposing_party_text = "Iniciativa"
+                                proposing_party_text = ""
+                                if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
+                                    proposing_party_text = row['proposal_propondo_party']
 
                                 session_date_str_display = ""
                                 if pd.notna(row.get('session_date')):
                                     session_date_str_display = row['session_date'].strftime("%d/%m/%Y")
-                                    st.markdown(f"**{proposing_party_text} - {session_date_str_display}**")
+                                    if proposing_party_text:
+                                        st.markdown(f"**{proposing_party_text} - {session_date_str_display}**")
+                                    else:
+                                        st.markdown(f"**{session_date_str_display}**")
                                 else:
-                                    st.markdown(f"**{proposing_party_text}**")
+                                    if proposing_party_text:
+                                        st.markdown(f"**{proposing_party_text}**")
 
                                 st.markdown(f"#### {row['full_title']}")
                                 if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':
@@ -492,12 +496,13 @@ if not data_df.empty:
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             # --- Resumo da Proposta ---
-                            proposing_party_text = row.get('proposal_proposing_party', 'N/A')
-                            if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
-                                proposing_party_text = "Iniciativa"
+                            proposing_party_text = ""
+                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_propondo_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
+                                proposing_party_text = row['proposal_propondo_party']
 
                             # Date is not available in this fallback, so only party
-                            st.markdown(f"**{proposing_party_text}**")
+                            if proposing_party_text:
+                                st.markdown(f"**{proposing_party_text}**")
 
                             st.markdown(f"#### {row['full_title']}")
                             if pd.notna(row['proposal_short_title']) and row['proposal_short_title'] != 'N/A':

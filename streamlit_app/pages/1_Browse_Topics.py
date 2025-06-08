@@ -474,9 +474,9 @@ if not data_df.empty:
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             # --- Resumo da Proposta ---
-                            proposing_party_text = topic_row.get('proposal_proposing_party', 'N/A')
-                            if not pd.notna(proposing_party_text) or proposing_party_text == 'N/A':
-                                proposing_party_text = "Iniciativa" # Default text
+                            proposing_party_text = ""
+                            if pd.notna(topic_row.get('proposal_proposing_party')) and topic_row['proposal_proposing_party'] != 'N/A' and str(topic_row['proposal_proposing_party']).lower() != 'nan':
+                                proposing_party_text = topic_row['proposal_proposing_party']
 
                             # Date is already part of the group header (date_str), 
                             # but can be repeated if desired or for context if date_str is "Data não disponível"
@@ -486,9 +486,13 @@ if not data_df.empty:
                                 current_date_str_display = topic_row['session_date'].strftime("%d/%m/%Y")
                             
                             if current_date_str_display != "Data não disponível":
-                                st.markdown(f"**{proposing_party_text} - {current_date_str_display}**")
+                                if proposing_party_text:
+                                    st.markdown(f"**{proposing_party_text} - {current_date_str_display}**")
+                                else:
+                                    st.markdown(f"**{current_date_str_display}**")
                             else:
-                                st.markdown(f"**{proposing_party_text}**")
+                                if proposing_party_text:
+                                    st.markdown(f"**{proposing_party_text}**")
                             
                             st.markdown(f"#### {topic_row['full_title']}")
                             if pd.notna(topic_row['proposal_short_title']) and topic_row['proposal_short_title'] != 'N/A':
