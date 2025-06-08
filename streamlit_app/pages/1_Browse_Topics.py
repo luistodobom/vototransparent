@@ -9,7 +9,8 @@ from datetime import datetime
 st.set_page_config(
     page_title="Todas as Votações - VotoTransparente PT",
     page_icon="🇵🇹",
-    layout="wide"
+    layout="wide",
+    theme="light"
 )
 
 st.markdown("""

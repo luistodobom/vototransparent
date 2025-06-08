@@ -14,7 +14,8 @@ import matplotlib.patheffects as path_effects
 st.set_page_config(
     page_title="Detalhes da Votação - VotoTransparente PT",
     page_icon="🇵🇹",
-    layout="wide"
+    layout="wide",
+    theme="light"
 )
 
 st.markdown("""
