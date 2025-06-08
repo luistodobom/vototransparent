@@ -28,14 +28,15 @@ st.markdown("""
 
 # --- Party Metadata and Chart Configuration ---
 PARTY_METADATA = {
-    "PS": {"mps": 120, "color": "#CE18BC"},  # Pink
-    "PSD": {"mps": 77, "color": "#F26932"},   # Dark Orange
-    "CH": {"mps": 12, "color": "#001BA4"},    # Navy
-    "IL": {"mps": 8, "color": "#329DC1"},     # Deep Sky Blue
-    "PCP": {"mps": 6, "color": "#D01F20"},    # Red
-    "BE": {"mps": 5, "color": "#7E1CAA"},     # Dark Red / Maroon
-    "PAN": {"mps": 1, "color": "#76A639"},    # Green
-    "L": {"mps": 1, "color": "#2D2C31"}       # Light Sea Green
+    "PS": {"color": "#CE18BC"},  # Pink
+    "PSD": {"color": "#F26932"},   # Dark Orange
+    "CH": {"color": "#001BA4"},    # Navy
+    "IL": {"color": "#329DC1"},     # Deep Sky Blue
+    "PCP": {"color": "#D01F20"},    # Red
+    "BE": {"color": "#7E1CAA"},     # Dark Red / Maroon
+    "PAN": {"color": "#76A639"},    # Green
+    "L": {"color": "#2D2C31"},       # Light Sea Green
+    "CDS-PP": {"color": "#0093DB"}, # Light Blue
 }
 ORDERED_PARTIES = ["PCP", "BE",  "L", "PS", "PAN", "PSD", "IL", "CH"] # Left to Right overall
 
@@ -560,6 +561,7 @@ if issue_id_param and not data_df.empty:
                 party_vote_info = viz_parties_df[viz_parties_df['party'] == party_name_meta]
                 
                 stance_for_viz = "neutral" 
+                mps_for_viz = 0 # Initialize MPs for visualization to 0
                 
                 if not party_vote_info.empty:
                     party_row = party_vote_info.iloc[0]
@@ -568,21 +570,22 @@ if issue_id_param and not data_df.empty:
                     abstention = int(party_row.get('votes_abstention', 0))
                     
                     total_explicit_votes = favor + against + abstention
+                    mps_for_viz = total_explicit_votes # Use actual voting MPs for this proposal
 
-                    if meta_info['mps'] > 0 and total_explicit_votes == 0: 
-                        stance_for_viz = "neutral" 
-                    elif favor > against and favor > abstention:
-                        stance_for_viz = "favor"
-                    elif against > favor and against > abstention:
-                        stance_for_viz = "contra"
-                    else: 
-                        stance_for_viz = "abstain" 
-                else:
-                    stance_for_viz = "neutral" 
+                    if mps_for_viz > 0: # Determine stance only if there were votes
+                        if favor > against and favor > abstention:
+                            stance_for_viz = "favor"
+                        elif against > favor and against > abstention:
+                            stance_for_viz = "contra"
+                        else: 
+                            # Default to abstain if not clearly favor or contra (covers abstention-dominant or ties)
+                            stance_for_viz = "abstain" 
+                    # If mps_for_viz is 0, stance remains "neutral"
+                # If party_vote_info was empty, mps_for_viz remains 0 and stance_for_viz remains "neutral"
 
                 chart_data_for_viz.append({
                     "name": party_name_meta,
-                    "mps": meta_info["mps"],
+                    "mps": mps_for_viz, # Use dynamically calculated MPs for the visualization
                     "base_color": meta_info["color"],
                     "stance": stance_for_viz
                 })
