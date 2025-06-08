@@ -10,8 +10,6 @@ import pypdf
 import pandas as pd
 from dotenv import load_dotenv
 import hashlib
-import concurrent.futures  # Add this import for parallel processing
-import threading # Add this import for Lock
 
 # Add manual PDF parsing imports
 import tabula
@@ -29,7 +27,6 @@ DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_DELAY = 5  # seconds
 PDF_PAGE_PARTITION_SIZE = 5  # Process PDFs in chunks of this many pages
-MAX_WORKERS = 4  # Number of parallel threads to use for proposal processing
 
 # Load environment variables
 load_dotenv()
@@ -1002,137 +999,6 @@ def generate_session_pdf_filename(session_pdf_url, session_year):
         return f"session_{session_year}_{url_hash}.pdf"
 
 
-# --- Proposal Processing Function for Parallel Execution ---
-def process_single_proposal(proposal_data, session_info, df, df_lock):
-    """
-    Process a single proposal from a session PDF.
-    
-    Args:
-        proposal_data: Dictionary containing proposal information
-        session_info: Dictionary with session metadata
-        df: The DataFrame to update
-        df_lock: Lock to synchronize DataFrame access
-    
-    Returns:
-        Tuple of (row_index, updated_data) or None if skipped
-    """
-    proposal_name = proposal_data.get('proposal_name')
-    proposal_gov_link = proposal_data.get('proposal_link')
-    voting_summary = proposal_data.get('voting_summary')
-    approval_status = proposal_data.get('approval_status')
-    
-    if not proposal_name:
-        print(f"Skipping proposal with no name from {session_info['session_pdf_url']}")
-        return None
-        
-    # Need to access df with lock to find or create the row
-    with df_lock:
-        match_criteria = (df['session_pdf_url'] == session_info['session_pdf_url']) & (df['proposal_name_from_session'] == proposal_name)
-        if df[match_criteria].empty:
-            row_idx = len(df)
-            # Initialize new row with basic session information
-            df.loc[row_idx, 'session_pdf_url'] = session_info['session_pdf_url']
-            df.loc[row_idx, 'session_year'] = session_info['session_year']
-            df.loc[row_idx, 'session_date'] = session_info['session_date']
-            df.loc[row_idx, 'proposal_name_from_session'] = proposal_name
-        else:
-            row_idx = df[match_criteria].index[0]
-    
-    # Store all updates to apply at once to minimize lock time
-    update_data = {
-        'session_date': session_info['session_date'],
-        'session_pdf_text_path': session_info['session_pdf_path'],
-        'session_pdf_download_status': 'Success',
-        'proposal_gov_link': proposal_gov_link,
-        'voting_details_json': json.dumps(voting_summary) if voting_summary else None,
-        'session_parse_status': 'Success',
-        'proposal_approval_status': approval_status,
-        'overall_status': 'Pending Further Stages',
-        'last_error_message': None,
-        'last_processed_timestamp': datetime.now().isoformat()
-    }
-    
-    # Check if we need to perform Stage 3 (get proposal details)
-    with df_lock:
-        need_details_scrape = pd.isna(df.loc[row_idx, 'proposal_details_scrape_status']) or \
-            df.loc[row_idx, 'proposal_details_scrape_status'] not in ['Success', 'Success (No Doc Link)', 'No Gov Link']
-    
-    if need_details_scrape:
-        if proposal_gov_link and isinstance(proposal_gov_link, str) and proposal_gov_link.startswith("http"):
-            details_result = fetch_proposal_details_and_download_doc(proposal_gov_link, PROPOSAL_DOC_DIR)
-            update_data.update({
-                'proposal_authors_json': details_result['authors_json'],
-                'proposal_document_url': details_result['document_info']['link'],
-                'proposal_document_type': details_result['document_info']['type'],
-                'proposal_document_local_path': details_result['document_info']['local_path'],
-                'proposal_doc_download_status': details_result['document_info']['download_status'],
-                'proposal_details_scrape_status': details_result['scrape_status'],
-            })
-            if details_result['error']:
-                update_data.update({
-                    'last_error_message': details_result['error'],
-                    'overall_status': 'Failed Stage 3 (Proposal Details Scrape)'
-                })
-        else:
-            update_data.update({
-                'proposal_details_scrape_status': 'No Gov Link',
-                'overall_status': 'Skipped Stage 3 (No Gov Link)'
-            })
-    
-    # Check if we need to perform Stage 4 (summarize document)
-    # Get the document path from existing data or updates
-    with df_lock:
-        proposal_doc_path = update_data.get('proposal_document_local_path', df.loc[row_idx, 'proposal_document_local_path'])
-        doc_download_status = update_data.get('proposal_doc_download_status', df.loc[row_idx, 'proposal_doc_download_status'])
-        summarize_status = df.loc[row_idx, 'proposal_summarize_status']
-    
-    if pd.notna(proposal_doc_path) and doc_download_status == 'Success' and \
-       (pd.isna(summarize_status) or summarize_status != 'Success'):
-        
-        # Use the PDF file path directly instead of extracting text first
-        summary_data, summary_err = summarize_proposal_text(proposal_doc_path)
-        if summary_err:
-            update_data.update({
-                'proposal_summarize_status': f'LLM Summary Failed: {summary_err}',
-                'last_error_message': summary_err,
-                'overall_status': 'Failed Stage 4 (LLM Summary)'
-            })
-        else:
-            update_data.update({
-                'proposal_summary_general': summary_data['general_summary'],
-                'proposal_summary_analysis': summary_data['critical_analysis'],
-                'proposal_summary_fiscal_impact': summary_data['fiscal_impact'],
-                'proposal_summary_colloquial': summary_data['colloquial_summary'],
-                'proposal_category': summary_data['categories'],
-                'proposal_short_title': summary_data['short_title'],
-                'proposal_proposing_party': summary_data['proposing_party'],
-                'proposal_summarize_status': 'Success',
-                'overall_status': 'Success'
-            })
-    elif details_result.get('document_info', {}).get('download_status') == 'Success' and pd.isna(proposal_doc_path):
-        update_data.update({
-            'proposal_summarize_status': 'Skipped - No Proposal Document',
-        })
-        if update_data.get('overall_status') not in ['Failed Stage 3 (Proposal Details Scrape)', 'Skipped Stage 3 (No Gov Link)']:
-            update_data.update({
-                'overall_status': 'Completed (No Proposal Doc to Summarize)'
-            })
-    
-    # Update overall status if not already failed
-    current_overall_status = update_data.get('overall_status', 'Pending Further Stages')
-    if 'Failed' not in str(current_overall_status) and 'Skipped' not in str(current_overall_status) and current_overall_status != 'Success':
-        if update_data.get('proposal_summarize_status') == 'Success':
-            update_data['overall_status'] = 'Success'
-        elif update_data.get('proposal_details_scrape_status') in ['Success', 'Success (No Doc Link)'] and \
-             update_data.get('proposal_summarize_status') == 'Skipped - No Proposal Document':
-             update_data['overall_status'] = 'Completed (No Proposal Doc to Summarize)'
-        elif update_data.get('proposal_details_scrape_status') == 'No Gov Link':
-             update_data['overall_status'] = 'Completed (No Gov Link for Details)'
-        else:
-            update_data['overall_status'] = 'Partially Processed'
-    
-    return row_idx, update_data
-
 # --- Main Pipeline Orchestrator ---
 def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
     if not GEMINI_API_KEY:
@@ -1267,7 +1133,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     df.loc[idx, 'session_pdf_text_path'] = current_session_pdf_path
                     df.loc[idx, 'session_pdf_download_status'] = 'Success'
                     df.loc[idx, 'session_parse_status'] = status_message
-                    df.loc[idx, 'overall_status'] = 'Completed (No Propostas)'
+                    df.loc[idx, 'overall_status'] = 'Completed (No Proposals)'
                     df.loc[idx, 'last_processed_timestamp'] = datetime.now().isoformat()
 
             save_dataframe(df)
@@ -1275,42 +1141,107 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             continue # Move to next session PDF
 
         print(f"LLM extracted {len(proposals_in_session)} proposals from {session_pdf_url}.")
-        
-        # Prepare session info dictionary to pass to the parallel function
-        session_info = {
-            'session_pdf_url': session_pdf_url,
-            'session_year': session_year,
-            'session_date': session_date,
-            'session_pdf_path': current_session_pdf_path
-        }
-        
-        # Create a lock for DataFrame synchronization
-        df_lock = threading.Lock()
-        
-        # Process proposals in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            # Submit all proposal processing tasks
-            futures = [
-                executor.submit(process_single_proposal, proposal_data, session_info, df, df_lock)
-                for proposal_data in proposals_in_session
-            ]
-            
-            # Process results as they complete
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    result = future.result()
-                    if result:
-                        row_idx, update_data = result
-                        # Apply updates to DataFrame with lock
-                        with df_lock:
-                            for col, value in update_data.items():
-                                df.loc[row_idx, col] = value
-                        
-                        # Save after each proposal is processed to avoid data loss
-                        with df_lock:
-                            save_dataframe(df)
-                except Exception as e:
-                    print(f"Error in parallel processing: {e}")
+
+        # For each proposal found in the session PDF
+        for proposal_data in proposals_in_session:
+            proposal_name = proposal_data.get('proposal_name')
+            proposal_gov_link = proposal_data.get('proposal_link') # May be null
+            voting_summary = proposal_data.get('voting_summary')
+            approval_status = proposal_data.get('approval_status') 
+
+            if not proposal_name:
+                print(f"Skipping proposal with no name from {session_pdf_url}")
+                continue
+
+            # Find or create row for this specific proposal
+            match_criteria = (df['session_pdf_url'] == session_pdf_url) & (df['proposal_name_from_session'] == proposal_name)
+            if df[match_criteria].empty:
+                row_idx = len(df)
+                df.loc[row_idx, 'session_pdf_url'] = session_pdf_url
+                df.loc[row_idx, 'session_year'] = session_year
+                df.loc[row_idx, 'session_date'] = session_date
+                df.loc[row_idx, 'proposal_name_from_session'] = proposal_name
+            else:
+                row_idx = df[match_criteria].index[0]
+
+            # Update common info from session PDF processing
+            df.loc[row_idx, 'session_date'] = session_date
+            df.loc[row_idx, 'session_pdf_text_path'] = current_session_pdf_path
+            df.loc[row_idx, 'session_pdf_download_status'] = 'Success'
+            df.loc[row_idx, 'proposal_gov_link'] = proposal_gov_link
+            df.loc[row_idx, 'voting_details_json'] = json.dumps(voting_summary) if voting_summary else None
+            df.loc[row_idx, 'session_parse_status'] = 'Success'
+            df.loc[row_idx, 'proposal_approval_status'] = approval_status 
+            # proposing_party will be filled in Stage 4
+            df.loc[row_idx, 'overall_status'] = 'Pending Further Stages' # Initial status after session parse
+            df.loc[row_idx, 'last_error_message'] = None # Clear previous errors for this row
+            df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
+
+            # Stage 3: Get proposal details (authors, actual proposal doc link)
+            if pd.isna(df.loc[row_idx, 'proposal_details_scrape_status']) or \
+               df.loc[row_idx, 'proposal_details_scrape_status'] not in ['Success', 'Success (No Doc Link)', 'No Gov Link']:
+                if proposal_gov_link and isinstance(proposal_gov_link, str) and proposal_gov_link.startswith("http"):
+                    details_result = fetch_proposal_details_and_download_doc(proposal_gov_link, PROPOSAL_DOC_DIR)
+                    df.loc[row_idx, 'proposal_authors_json'] = details_result['authors_json']
+                    df.loc[row_idx, 'proposal_document_url'] = details_result['document_info']['link']
+                    df.loc[row_idx, 'proposal_document_type'] = details_result['document_info']['type']
+                    df.loc[row_idx, 'proposal_document_local_path'] = details_result['document_info']['local_path']
+                    df.loc[row_idx, 'proposal_doc_download_status'] = details_result['document_info']['download_status']
+                    df.loc[row_idx, 'proposal_details_scrape_status'] = details_result['scrape_status']
+                    if details_result['error']:
+                        df.loc[row_idx, 'last_error_message'] = details_result['error']
+                        df.loc[row_idx, 'overall_status'] = 'Failed Stage 3 (Proposal Details Scrape)'
+                else:
+                    df.loc[row_idx, 'proposal_details_scrape_status'] = 'No Gov Link'
+                    df.loc[row_idx, 'overall_status'] = 'Skipped Stage 3 (No Gov Link)'
+                df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
+
+            # Stage 4: Summarize proposal document
+            proposal_doc_path = df.loc[row_idx, 'proposal_document_local_path']
+            if pd.notna(proposal_doc_path) and \
+               df.loc[row_idx, 'proposal_doc_download_status'] == 'Success' and \
+               (pd.isna(df.loc[row_idx, 'proposal_summarize_status']) or df.loc[row_idx, 'proposal_summarize_status'] != 'Success'):
+                
+                # Use the PDF file path directly instead of extracting text first
+                summary_data, summary_err = summarize_proposal_text(proposal_doc_path)
+                if summary_err:
+                    df.loc[row_idx, 'proposal_summarize_status'] = f'LLM Summary Failed: {summary_err}'
+                    df.loc[row_idx, 'last_error_message'] = summary_err
+                    df.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (LLM Summary)'
+                else:
+                    # Store individual summary fields in separate columns
+                    df.loc[row_idx, 'proposal_summary_general'] = summary_data['general_summary']
+                    df.loc[row_idx, 'proposal_summary_analysis'] = summary_data['critical_analysis']
+                    df.loc[row_idx, 'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
+                    df.loc[row_idx, 'proposal_summary_colloquial'] = summary_data['colloquial_summary']
+                    df.loc[row_idx, 'proposal_category'] = summary_data['categories']  # Now stores JSON array as string
+                    df.loc[row_idx, 'proposal_short_title'] = summary_data['short_title'] 
+                    df.loc[row_idx, 'proposal_proposing_party'] = summary_data['proposing_party'] # Added from LLM summary
+                    df.loc[row_idx, 'proposal_summarize_status'] = 'Success'
+                    df.loc[row_idx, 'overall_status'] = 'Success' # Final success for this proposal
+                df.loc[row_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
+            elif df.loc[row_idx, 'proposal_details_scrape_status'] == 'Success' and pd.isna(proposal_doc_path):
+                 # Scraped details, but no proposal doc was found/downloaded
+                 df.loc[row_idx, 'proposal_summarize_status'] = 'Skipped - No Proposal Document'
+                 if df.loc[row_idx, 'overall_status'] not in ['Failed Stage 3 (Proposal Details Scrape)', 'Skipped Stage 3 (No Gov Link)']:
+                    df.loc[row_idx, 'overall_status'] = 'Completed (No Proposal Doc to Summarize)'
+
+
+            # Update overall status if not already failed
+            current_overall_status = df.loc[row_idx, 'overall_status']
+            if 'Failed' not in str(current_overall_status) and 'Skipped' not in str(current_overall_status) and current_overall_status != 'Success':
+                if df.loc[row_idx, 'proposal_summarize_status'] == 'Success':
+                    df.loc[row_idx, 'overall_status'] = 'Success'
+                elif df.loc[row_idx, 'proposal_details_scrape_status'] in ['Success', 'Success (No Doc Link)'] and \
+                     df.loc[row_idx, 'proposal_summarize_status'] == 'Skipped - No Proposal Document':
+                     df.loc[row_idx, 'overall_status'] = 'Completed (No Proposal Doc to Summarize)'
+                elif df.loc[row_idx, 'proposal_details_scrape_status'] == 'No Gov Link':
+                     df.loc[row_idx, 'overall_status'] = 'Completed (No Gov Link for Details)'
+                else: # If some intermediate stage is done but not all
+                    df.loc[row_idx, 'overall_status'] = 'Partially Processed'
+
+
+            save_dataframe(df) # Save after each proposal is processed
         
         processed_sessions_count += 1
 
