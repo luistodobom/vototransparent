@@ -527,14 +527,41 @@ elif from_page == "browse":
     if government_param:
         st.session_state.selected_government = government_param
 
-# Get issue_id from query parameters
+# Get issue_id from query parameters (REVISED LOGIC BELOW)
+# query_param_id = st.query_params.get("issue_id")
+# if query_param_id:
+#     issue_id_param = str(query_param_id)
+#     st.session_state.selected_issue_identifier = issue_id_param
+# else:
+#     # Fallback to session state
+#     issue_id_param = st.session_state.get("selected_issue_identifier")
+
+# --- Refined Get Topic ID Logic (from previous commit) ---
+needs_url_update_for_session_id = False
+
+# Try to get ID from query parameters first
 query_param_id = st.query_params.get("issue_id")
+
 if query_param_id:
     issue_id_param = str(query_param_id)
-    st.session_state.selected_issue_identifier = issue_id_param
+    # Sync session_state if URL is the source of truth and differs or if session state is not set
+    if st.session_state.get("selected_issue_identifier") != issue_id_param:
+        st.session_state.selected_issue_identifier = issue_id_param
 else:
-    # Fallback to session state
-    issue_id_param = st.session_state.get("selected_issue_identifier")
+    # If not in query_params, try to get from session_state
+    session_state_id = st.session_state.get("selected_issue_identifier")
+    if session_state_id:
+        issue_id_param = str(session_state_id)
+        # Mark that the URL needs to be updated to reflect this ID
+        needs_url_update_for_session_id = True
+
+# If the ID came from session_state and URL needs updating, set query_params.
+# This will trigger a rerun. The page will then load with issue_id in query_params.
+if needs_url_update_for_session_id and issue_id_param:
+    st.query_params.update({"issue_id": issue_id_param})
+    # The script will rerun after this. For this current execution path,
+    # issue_id_param is already set, so content can be displayed if not for the rerun.
+    # Streamlit handles the rerun gracefully.
 
 if issue_id_param and not data_df.empty:
     topic_details_df = data_df[data_df['issue_identifier'] == str(issue_id_param)]
