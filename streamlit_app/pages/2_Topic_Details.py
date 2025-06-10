@@ -23,6 +23,10 @@ st.markdown("""
     div[data-testid="stSidebarNav"] {
         display: none;
     }
+    .stButton button {
+        /* Ensure back button is not overly large if it inherits global styles */
+        /* width: auto; */ /* Commented out as it might conflict with other buttons if not specific enough */
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -506,6 +510,47 @@ from_page = st.query_params.get("from_page", "home")
 # Initialize session state
 if 'last_page' not in st.session_state:
     st.session_state.last_page = from_page
+if 'search_query' not in st.session_state: # Ensure search_query is initialized
+    st.session_state.search_query = ""
+if 'selected_categories' not in st.session_state:
+    st.session_state.selected_categories = []
+if 'selected_approval_label' not in st.session_state:
+    st.session_state.selected_approval_label = "Todos"
+if 'selected_proposing_party' not in st.session_state:
+    st.session_state.selected_proposing_party = "Todos"
+if 'selected_government' not in st.session_state:
+    st.session_state.selected_government = "Todos"
+
+
+# --- Back Button Logic ---
+# Determine the target page and label for the back button
+back_button_target_page_path = "streamlit_app.py" # Default to home
+back_button_label = "⬅️ Voltar à Página Inicial"
+query_params_for_back = {"from_page": "details"} # Basic param
+
+if st.session_state.last_page == 'browse':
+    back_button_target_page_path = "pages/1_Browse_Topics.py"
+    back_button_label = "⬅️ Voltar a Todas as Votações"
+    query_params_for_back.update({
+        "categories": ",".join(st.session_state.get("selected_categories", [])),
+        "approval": st.session_state.get("selected_approval_label", "Todos"),
+        "proposing_party": st.session_state.get("selected_proposing_party", "Todos"),
+        "government": st.session_state.get("selected_government", "Todos"),
+        "from_page": "details" # Mark that we are coming back from details
+    })
+elif st.session_state.last_page == 'home':
+    back_button_target_page_path = "streamlit_app.py"
+    back_button_label = "⬅️ Voltar à Página Inicial"
+    query_params_for_back.update({
+        "search_query": st.session_state.get("search_query", ""),
+        "from_page": "details" # Mark that we are coming back from details
+    })
+
+if st.button(back_button_label, key="back_button_topic_details"):
+    st.query_params.clear() # Clear current issue_id params
+    st.query_params.update(query_params_for_back)
+    st.switch_page(back_button_target_page_path)
+
 
 # Check if coming from a specific page and handle restoration
 if from_page == "home":
@@ -526,15 +571,6 @@ elif from_page == "browse":
     government_param = st.query_params.get("government")
     if government_param:
         st.session_state.selected_government = government_param
-
-# Get issue_id from query parameters (REVISED LOGIC BELOW)
-# query_param_id = st.query_params.get("issue_id")
-# if query_param_id:
-#     issue_id_param = str(query_param_id)
-#     st.session_state.selected_issue_identifier = issue_id_param
-# else:
-#     # Fallback to session state
-#     issue_id_param = st.session_state.get("selected_issue_identifier")
 
 # --- Refined Get Topic ID Logic (from previous commit) ---
 needs_url_update_for_session_id = False
@@ -570,6 +606,7 @@ if issue_id_param and not data_df.empty:
         topic_info = topic_details_df.iloc[0]
 
         # Remove the navigation breadcrumb and back buttons - clean page design
+        # The new back button is placed above this title
         st.title(f"🗳️ {topic_info['full_title']}")
         if pd.notna(topic_info['proposal_short_title']) and topic_info['proposal_short_title'] != 'N/A':
             st.subheader(f"{topic_info['proposal_short_title']}")
