@@ -1,3 +1,4 @@
+import argparse
 import os
 import re
 import time
@@ -20,7 +21,8 @@ from google import genai
 from google.genai import types
 
 # --- Configuration ---
-DATAFRAME_PATH = "data/parliament_data.csv"
+YEAR = 2021
+DATAFRAME_PATH = f"data/parliament_data_{YEAR}.csv"
 SESSION_PDF_DIR = "data/session_pdfs"
 PROPOSAL_DOC_DIR = "data/proposal_docs"
 DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
@@ -1497,6 +1499,12 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
         print("DataFrame is empty.")
 
 if __name__ == "__main__":
-    # Example: run_pipeline(start_year=2022, end_year=2023, max_sessions_to_process=10)
-    # run_pipeline() # Process last 5 years, all sessions
-    run_pipeline(start_year=2020, end_year=2020, max_sessions_to_process=None)
+
+    parser = argparse.ArgumentParser(description="Run the Parliament PDF Scraper Pipeline.")
+    parser.add_argument('--year', type=int, help="Start year for scraping (default: current year - 5)", default=YEAR)
+    
+    args = parser.parse_args()
+    YEAR = args.year
+    DATAFRAME_PATH = f"data/parliament_data_{YEAR}.csv"
+
+    run_pipeline(start_year=YEAR, end_year=YEAR, max_sessions_to_process=None)
