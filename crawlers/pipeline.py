@@ -1020,12 +1020,26 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
     init_directories()
     df = load_or_initialize_dataframe()
 
-    last_processed_session_url_in_csv = None
-    if not df.empty and 'session_pdf_url' in df.columns and not df['session_pdf_url'].dropna().empty:
-        non_na_urls = df['session_pdf_url'].dropna()
-        if not non_na_urls.empty:
-            last_processed_session_url_in_csv = non_na_urls.iloc[-1]
-            print(f"Last session PDF URL recorded in CSV: {last_processed_session_url_in_csv}")
+    processed_dates_in_df = set()
+    last_date_in_df_for_reprocessing_check = None
+
+    if not df.empty and 'session_date' in df.columns:
+        processed_dates_in_df = set(df['session_date'].dropna().unique())
+        # Get session_date from the actual last row of the DataFrame
+        if not df['session_date'].dropna().empty: # Ensure there's at least one non-NA date
+            # Use iloc[-1] to get the last row's session_date
+            # This assumes the DataFrame is loaded in an order where the last row is meaningful,
+            # or it has been sorted by processing time prior to this.
+            # The prompt implies "last row of the CSV date".
+            potential_last_date = df['session_date'].iloc[-1]
+            if pd.notna(potential_last_date):
+                last_date_in_df_for_reprocessing_check = potential_last_date
+        
+        print(f"Found {len(processed_dates_in_df)} unique processed session dates in CSV.")
+        if last_date_in_df_for_reprocessing_check:
+            print(f"Session date of the last CSV entry (will be reprocessed if found online): {last_date_in_df_for_reprocessing_check}")
+        else:
+            print("No valid session date found in the last CSV entry, or CSV is effectively empty of dates.")
 
     scraper = ParliamentPDFScraper()
     current_year = datetime.now().year
@@ -1038,46 +1052,48 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
 
     TERMINAL_SUCCESS_STATUSES = {
         'Success', 
-        'Completed (No Proposals)', 
+        'Completed (No Propostas)', 
         'Completed (No Proposal Doc to Summarize)', 
         'Completed (No Gov Link for Details)'
     }
     
     sessions_to_process_infos = []
-    if not df.empty and 'session_pdf_url' in df.columns:
-        unique_urls_in_df = df['session_pdf_url'].dropna().unique()
-        urls_fully_processed_and_can_skip = set()
+    if not df.empty and 'session_date' in df.columns and processed_dates_in_df:
+        for info in all_session_pdf_infos_from_web:
+            current_web_session_date = info.get('date') # Expected 'YYYY-MM-DD'
 
-        for url_in_df in unique_urls_in_df:
-            session_entries = df[df['session_pdf_url'] == url_in_df]
-            if session_entries.empty:
+            if pd.isna(current_web_session_date):
+                # If date from web is missing, process it to be safe or log error
+                print(f"Warning: Session info from web has no date: {info['url']}. Adding for processing.")
+                sessions_to_process_infos.append(info)
                 continue
 
-            all_terminal_success = True
-            for status in session_entries['overall_status']:
-                if pd.isna(status) or status not in TERMINAL_SUCCESS_STATUSES:
-                    all_terminal_success = False
-                    break
-            
-            if all_terminal_success:
-                urls_fully_processed_and_can_skip.add(url_in_df)
-        
-        print(f"Identified {len(urls_fully_processed_and_can_skip)} session URLs as fully processed in CSV and potentially skippable.")
-        
-        sessions_to_process_infos = [
-            info for info in all_session_pdf_infos_from_web 
-            if info['url'] not in urls_fully_processed_and_can_skip
-        ]
-    else: 
+            if current_web_session_date in processed_dates_in_df:
+                if current_web_session_date == last_date_in_df_for_reprocessing_check:
+                    # This date matches the last entry's date in CSV, mark for re-processing.
+                    print(f"Session date {current_web_session_date} matches last CSV entry date. Adding for re-processing.")
+                    sessions_to_process_infos.append(info)
+                else:
+                    # This date is in CSV and is not the last entry's date, so skip.
+                    # print(f"Skipping already processed session date: {current_web_session_date}")
+                    pass 
+            else:
+                # This date is not in CSV, so process.
+                sessions_to_process_infos.append(info)
+        print(f"Filtered to {len(sessions_to_process_infos)} sessions after considering processed dates.")
+    else: # DataFrame is empty or has no session_date column or no processed dates
         sessions_to_process_infos = all_session_pdf_infos_from_web
+        print("Processing all sessions found from web (CSV empty or no relevant dates).")
 
-    if last_processed_session_url_in_csv:
-        sessions_to_process_infos.sort(key=lambda x: (x['url'] != last_processed_session_url_in_csv, x.get('date', '1900-01-01'), x['url']))
-    else: 
-        sessions_to_process_infos.sort(key=lambda x: (x.get('date', '1900-01-01'), x['url']))
+
+    # Sort sessions: prioritize reprocessing the last known date, then by date.
+    if last_date_in_df_for_reprocessing_check:
+        sessions_to_process_infos.sort(key=lambda x: (str(x.get('date', '1900-01-01')) != str(last_date_in_df_for_reprocessing_check), str(x.get('date', '1900-01-01')), x['url']))
+    else:
+        sessions_to_process_infos.sort(key=lambda x: (str(x.get('date', '1900-01-01')), x['url']))
 
     
-    print(f"Total sessions to iterate through after filtering: {len(sessions_to_process_infos)}")
+    print(f"Total sessions to iterate through after filtering and sorting: {len(sessions_to_process_infos)}")
 
     processed_sessions_count = 0
     for session_info in sessions_to_process_infos:
@@ -1179,7 +1195,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
         run_stage2_llm_parse = True
 
         if not existing_rows_for_session_pdf.empty:
-            summary_row_no_proposals_status = existing_rows_for_session_pdf[
+            summary_row_no_propostas_status = existing_rows_for_session_pdf[
                 (pd.notna(existing_rows_for_session_pdf['session_parse_status'])) &
                 (existing_rows_for_session_pdf['session_parse_status'] == 'LLM Parsed - No Propostas Encontradas') &
                 (pd.isna(existing_rows_for_session_pdf['proposal_name_from_session']))
@@ -1199,7 +1215,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 pd.notna(status) and status == 'Success' for status in existing_rows_for_session_pdf['session_parse_status']
             )
 
-            if not summary_row_no_proposals_status.empty or \
+            if not summary_row_no_propostas_status.empty or \
                (not proposal_rows.empty and all_proposal_rows_parsed_successfully) or \
                (proposal_rows.empty and any_row_parsed_successfully):
 
@@ -1218,7 +1234,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                             'voting_summary': voting_summary_obj,
                             'proposal_approval_status': row['proposal_approval_status'] # Corrected key
                         })
-                if not proposals_from_llm and not summary_row_no_proposals_status.empty:
+                if not proposals_from_llm and not summary_row_no_propostas_status.empty:
                     session_parse_status_for_df = 'LLM Parsed - No Propostas Encontradas'
                 elif proposals_from_llm : 
                     session_parse_status_for_df = 'Success'
@@ -1268,7 +1284,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             df.loc[summary_idx_to_update, 'session_pdf_download_status'] = 'Success' 
             df.loc[summary_idx_to_update, 'session_parse_status'] = session_parse_status_for_df
             df.loc[summary_idx_to_update, 'last_error_message'] = session_parse_error_for_df 
-            df.loc[summary_idx_to_update, 'overall_status'] = 'Failed Stage 2 (LLM Session Parse)' if session_parse_error_for_df else 'Completed (No Proposals)'
+            df.loc[summary_idx_to_update, 'overall_status'] = 'Failed Stage 2 (LLM Session Parse)' if session_parse_error_for_df else 'Completed (No Propostas)'
             df.loc[summary_idx_to_update, 'last_processed_timestamp'] = datetime.now().isoformat()
             
             if run_stage2_llm_parse: 
@@ -1290,7 +1306,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 current_overall_status_val = df.loc[summary_idx, 'overall_status']
                 is_terminal = pd.notna(current_overall_status_val) and current_overall_status_val in TERMINAL_SUCCESS_STATUSES
                 if pd.isna(current_overall_status_val) or not is_terminal:
-                    df.loc[summary_idx, 'overall_status'] = 'Completed (No Proposals)' 
+                    df.loc[summary_idx, 'overall_status'] = 'Completed (No Propostas)' 
                     df.loc[summary_idx, 'session_parse_status'] = session_parse_status_for_df 
                     df.loc[summary_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
             else: 
@@ -1301,7 +1317,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 df.loc[summary_idx, 'session_pdf_text_path'] = actual_session_pdf_disk_path
                 df.loc[summary_idx, 'session_pdf_download_status'] = 'Success'
                 df.loc[summary_idx, 'session_parse_status'] = session_parse_status_for_df
-                df.loc[summary_idx, 'overall_status'] = 'Completed (No Proposals)'
+                df.loc[summary_idx, 'overall_status'] = 'Completed (No Propostas)'
                 df.loc[summary_idx, 'last_processed_timestamp'] = datetime.now().isoformat()
 
             print(f"No proposals found or reconstructed for {current_session_pdf_url}.")
@@ -1350,10 +1366,9 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             current_overall_status = df.loc[row_idx, 'overall_status']
             is_current_overall_status_terminal = pd.notna(current_overall_status) and current_overall_status in TERMINAL_SUCCESS_STATUSES
             
-            is_last_processed_and_not_terminal = (current_session_pdf_url == last_processed_session_url_in_csv and \
-                                                  (pd.isna(current_overall_status) or not is_current_overall_status_terminal))
-
-            if pd.isna(current_overall_status) or not is_current_overall_status_terminal or is_last_processed_and_not_terminal:
+            # If current status is not terminal, or if it's part of the last date being reprocessed and not terminal, reset.
+            # This simplifies to: if not terminal, reset.
+            if pd.isna(current_overall_status) or not is_current_overall_status_terminal:
                  df.loc[row_idx, 'overall_status'] = 'Pending Further Stages'
                  df.loc[row_idx, 'last_error_message'] = pd.NA # Clear previous errors
                  df.loc[row_idx, 'proposal_details_scrape_status'] = pd.NA
@@ -1371,15 +1386,15 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                 if not scrape_status_is_na:
                     is_terminal_status_for_stage3 = current_scrape_status in ['Success', 'Success (No Doc Link)', 'No Gov Link', 'Fetch Failed']
 
-                rerun_last_session_for_stage3 = False
-                if current_session_pdf_url == last_processed_session_url_in_csv:
+                rerun_if_part_of_last_reprocessed_date = False
+                if str(session_date) == str(last_date_in_df_for_reprocessing_check): # Compare current session's date
                     is_perfect_stage3_success = False
                     if not scrape_status_is_na and current_scrape_status in ['Success', 'Success (No Doc Link)']:
                         is_perfect_stage3_success = True
                     if not is_perfect_stage3_success:
-                        rerun_last_session_for_stage3 = True
+                        rerun_if_part_of_last_reprocessed_date = True
                 
-                if scrape_status_is_na or not is_terminal_status_for_stage3 or rerun_last_session_for_stage3:
+                if scrape_status_is_na or not is_terminal_status_for_stage3 or rerun_if_part_of_last_reprocessed_date:
                     needs_stage3_run = True
             else: 
                 current_overall_status_for_else = df.loc[row_idx, 'overall_status']
@@ -1425,11 +1440,15 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                not overall_status_s4_str.startswith('Failed Stage 3'):
                 
                 current_summary_status_s4 = df.loc[row_idx, 'proposal_summarize_status']
-                # This original condition structure is safe due to leading pd.isna()
+                
+                force_rerun_summary_for_last_date = False
+                if str(session_date) == str(last_date_in_df_for_reprocessing_check): # Compare current session's date
+                    if pd.isna(current_summary_status_s4) or (pd.notna(current_summary_status_s4) and current_summary_status_s4 != 'Success'):
+                        force_rerun_summary_for_last_date = True
+
                 if pd.isna(current_summary_status_s4) or \
                    (pd.notna(current_summary_status_s4) and current_summary_status_s4 != 'Success') or \
-                   (current_session_pdf_url == last_processed_session_url_in_csv and \
-                    (pd.isna(current_summary_status_s4) or (pd.notna(current_summary_status_s4) and current_summary_status_s4 != 'Success'))):
+                   force_rerun_summary_for_last_date:
                     needs_stage4_run = True
             
             if needs_stage4_run:
