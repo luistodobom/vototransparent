@@ -4,5 +4,5 @@ __pycache__/
 *.pyo
 .DS_Store
 data/
-!data/parliament_data.csv
+!data/parliament_data*.csv
 notebooks/
