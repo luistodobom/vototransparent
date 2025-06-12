@@ -676,7 +676,7 @@ if not data_df.empty:
             chart = alt.Chart(chart_df_filtered).mark_bar().encode(
                 x=alt.X('sum(Count):Q', title='Número de Propostas Apresentadas', stack='zero'),
                 y=alt.Y('Party:N', sort=alt.EncodingSortField(field="Count", op="sum", order='descending'), title='Partido'),
-                color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Proposta')),
+                color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Proposta', orient='bottom')),
                 order=alt.Order('status_order_val:Q', sort='ascending') # Ensures consistent stack order
             ).properties(
                 title=f"Desempenho de Propostas por Partido ({selected_government_stats_label})"
