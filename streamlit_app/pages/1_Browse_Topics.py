@@ -5,6 +5,10 @@ import json
 import re # For extracting BID
 from datetime import datetime
 
+# --- Constants for pagination ---
+INITIAL_DISPLAY_COUNT = 20
+LOAD_MORE_COUNT = 20
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Todas as Votações - VotoTransparente PT",
@@ -65,6 +69,11 @@ GOVERNMENT_PERIODS = {
 }
 
 # --- Data Loading ---
+
+# Function to reset the number of displayed topics when filters change
+def reset_displayed_topics_count():
+    st.session_state.num_displayed_topics = INITIAL_DISPLAY_COUNT
+
 @st.cache_data
 def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for pages
     final_csv_path = csv_path
@@ -309,6 +318,8 @@ if 'selected_government' not in st.session_state:
     st.session_state.selected_government = "Todos"
 if 'last_page' not in st.session_state:
     st.session_state.last_page = 'browse'
+if 'num_displayed_topics' not in st.session_state: # Initialize for pagination
+    st.session_state.num_displayed_topics = INITIAL_DISPLAY_COUNT
 
 # Check if returning from details page and restore filters
 from_page = st.query_params.get("from_page")
@@ -326,7 +337,11 @@ if from_page == "browse":
     if government_param:
         st.session_state.selected_government = government_param
     # Clear query params after restoring state
-    st.query_params.clear()
+    # Only clear if we are not just re-running due to "load more"
+    # However, filter changes will also cause a rerun.
+    # The on_change callback handles resetting num_displayed_topics for filter changes.
+    if from_page: # Clear only if we explicitly navigated back with params
+        st.query_params.clear()
 
 # --- Filters Section ---
 # First row of filters
@@ -338,7 +353,8 @@ with col_category:
         label="Selecione uma ou mais categorias para filtrar as propostas. Apenas propostas que correspondam a TODAS as categorias selecionadas serão exibidas.",
         options=categories,
         default=st.session_state.selected_categories,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        on_change=reset_displayed_topics_count # Reset count on filter change
     )
     st.session_state.selected_categories = selected_categories
 
@@ -354,7 +370,8 @@ with col_approval_status:
         label="Filtro Estado Aprovação",
         options=list(approval_status_options.keys()),
         index=list(approval_status_options.keys()).index(st.session_state.selected_approval_label),
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        on_change=reset_displayed_topics_count # Reset count on filter change
     )
     st.session_state.selected_approval_label = selected_approval_label
     selected_approval_filter_val = approval_status_options[selected_approval_label]
@@ -366,14 +383,25 @@ with col_proposing_party:
     st.markdown("#### Proponente:")
     available_proposing_parties = []
     if not data_df.empty and 'proposal_proposing_party' in data_df.columns:
-        available_proposing_parties = sorted(data_df['proposal_proposing_party'].dropna().unique())
-    
+        # Ensure 'N/A' and actual party names are handled correctly for sorting if needed
+        unique_parties = data_df['proposal_proposing_party'].dropna().unique()
+        available_proposing_parties = sorted([party for party in unique_parties if party != 'N/A'])
+        if 'N/A' in unique_parties: # Add 'N/A' at the end or handle as per preference
+            available_proposing_parties.append('N/A')
+            
     proposing_party_options = ["Todos"] + available_proposing_parties
+    
+    # Ensure current session state value is valid, otherwise default to "Todos" or first option
+    current_proposing_party_selection = st.session_state.selected_proposing_party
+    if current_proposing_party_selection not in proposing_party_options:
+        current_proposing_party_selection = "Todos" # Default if not found
+
     selected_proposing_party = st.selectbox(
         label="Filtro Proponente",
         options=proposing_party_options,
-        index=0 if st.session_state.selected_proposing_party not in proposing_party_options else proposing_party_options.index(st.session_state.selected_proposing_party),
-        label_visibility="collapsed"
+        index=proposing_party_options.index(current_proposing_party_selection),
+        label_visibility="collapsed",
+        on_change=reset_displayed_topics_count # Reset count on filter change
     )
     st.session_state.selected_proposing_party = selected_proposing_party
 
@@ -383,7 +411,8 @@ with col_government:
         label="Filtro por Período de Governo",
         options=list(GOVERNMENT_PERIODS.keys()),
         index=list(GOVERNMENT_PERIODS.keys()).index(st.session_state.selected_government),
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        on_change=reset_displayed_topics_count # Reset count on filter change
     )
     st.session_state.selected_government = selected_government
 
@@ -393,7 +422,7 @@ if not data_df.empty:
     # Get unique topics based on issue_identifier, keeping the first occurrence for title and outcome
     unique_topics = data_df.drop_duplicates(subset=['issue_identifier'])
 
-    filtered_topics = unique_topics.copy()
+    filtered_topics_full = unique_topics.copy() # Keep the full filtered list
 
     # Apply category filter
     if selected_categories:
@@ -403,22 +432,22 @@ if not data_df.empty:
         ]
         
         if selected_category_ids:
-            filtered_topics = filtered_topics[
-                filtered_topics['proposal_category_list'].apply(
-                    lambda cat_list: all(cat_id in cat_list for cat_id in selected_category_ids)
+            filtered_topics_full = filtered_topics_full[
+                filtered_topics_full['proposal_category_list'].apply(
+                    lambda cat_list: isinstance(cat_list, list) and all(cat_id in cat_list for cat_id in selected_category_ids)
                 )
             ]
 
     # Apply approval status filter
     if selected_approval_label != "Todos":
         if selected_approval_filter_val == "unknown":
-            filtered_topics = filtered_topics[filtered_topics['proposal_approval_status'].isna()]
+            filtered_topics_full = filtered_topics_full[filtered_topics_full['proposal_approval_status'].isna()]
         else: # 0.0 or 1.0
-            filtered_topics = filtered_topics[filtered_topics['proposal_approval_status'] == selected_approval_filter_val]
+            filtered_topics_full = filtered_topics_full[filtered_topics_full['proposal_approval_status'] == selected_approval_filter_val]
     
     # Apply proposing party filter
     if selected_proposing_party != "Todos":
-        filtered_topics = filtered_topics[filtered_topics['proposal_proposing_party'] == selected_proposing_party]
+        filtered_topics_full = filtered_topics_full[filtered_topics_full['proposal_proposing_party'] == selected_proposing_party]
 
     # Apply government period filter
     if selected_government != "Todos":
@@ -429,32 +458,35 @@ if not data_df.empty:
         # Filter by date range
         if start_date and end_date:
             # Both start and end dates defined
-            filtered_topics = filtered_topics[
-                (filtered_topics['session_date'] >= start_date) & 
-                (filtered_topics['session_date'] <= end_date)
+            filtered_topics_full = filtered_topics_full[
+                (filtered_topics_full['session_date'].notna()) &
+                (filtered_topics_full['session_date'] >= start_date) & 
+                (filtered_topics_full['session_date'] <= end_date)
             ]
         elif start_date and not end_date:
             # Only start date (current government)
-            filtered_topics = filtered_topics[filtered_topics['session_date'] >= start_date]
+            filtered_topics_full = filtered_topics_full[(filtered_topics_full['session_date'].notna()) & (filtered_topics_full['session_date'] >= start_date)]
         elif end_date and not start_date:
             # Only end date (shouldn't happen with current data, but handle gracefully)
-            filtered_topics = filtered_topics[filtered_topics['session_date'] <= end_date]
+            filtered_topics_full = filtered_topics_full[(filtered_topics_full['session_date'].notna()) & (filtered_topics_full['session_date'] <= end_date)]
 
     # Sort by date
-    if not filtered_topics.empty:
-        # ascending_order = sort_order == "Mais antigo primeiro" # Old sorting logic
+    if not filtered_topics_full.empty:
         ascending_order = False # Always sort newest first
-        filtered_topics = filtered_topics.sort_values(
+        filtered_topics_full = filtered_topics_full.sort_values(
             by='session_date', 
             ascending=ascending_order,
             na_position='last'
         )
 
+        num_total_filtered_topics = len(filtered_topics_full)
+        # Get the subset of topics to display for this run
+        topics_to_display_df = filtered_topics_full.head(st.session_state.num_displayed_topics)
+
         # Group by date for display
-        if not filtered_topics.empty:
-            # Group topics by session_date
+        if not topics_to_display_df.empty:
             grouped_topics = {}
-            for _, topic_row in filtered_topics.iterrows():
+            for _, topic_row in topics_to_display_df.iterrows():
                 date_key = topic_row['session_date']
                 if pd.isna(date_key):
                     date_str = "Data não disponível"
@@ -547,9 +579,19 @@ if not data_df.empty:
                                     (pd.notna(topic_row['proposal_summary_fiscal_impact']) and topic_row['proposal_summary_fiscal_impact'].strip()) or 
                                     (pd.notna(topic_row['proposal_summary_colloquial']) and topic_row['proposal_summary_colloquial'].strip())):
                                 st.markdown("Não há detalhes adicionais disponíveis.")
-        else:
+            
+            # --- "Load More" Button ---
+            if st.session_state.num_displayed_topics < num_total_filtered_topics:
+                if st.button("Carregar mais propostas", key="load_more_browse_topics"):
+                    st.session_state.num_displayed_topics += LOAD_MORE_COUNT
+                    st.rerun()
+            elif num_total_filtered_topics > 0 : # All items are displayed
+                 st.markdown(f"Mostrando todas as {num_total_filtered_topics} propostas encontradas.")
+
+
+        else: # This case means topics_to_display_df is empty
             st.info("Não foram encontradas votações para os filtros selecionados.")
-    else:
+    else: # This case means filtered_topics_full is empty
         st.info("Não foram encontradas votações para os filtros selecionados.")
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro.")
