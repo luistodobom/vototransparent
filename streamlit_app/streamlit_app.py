@@ -1,9 +1,13 @@
 import streamlit as st
 import pandas as pd
+import re
+import unicodedata
+from datetime import datetime # Added for GOVERNMENT_PERIODS
+import altair as alt # Added for the new chart
+
+# For extracting BID
 import os
 import json
-import re # For extracting BID
-import unicodedata
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -334,6 +338,33 @@ def load_data(csv_path="data/parliament_data.csv"):
 data_df = load_data()
 
 # --- Helper function to normalize text ---
+# Define GOVERNMENT_PERIODS and TARGET_PARTIES after data loading and helper functions
+GOVERNMENT_PERIODS = {
+    "Todos": {"start": None, "end": None},
+    "XXI Governo (Nov 2015 - Out 2019)": {
+        "start": datetime(2015, 11, 26),
+        "end": datetime(2019, 10, 26)
+    },
+    "XXII Governo (Out 2019 - Mar 2022)": {
+        "start": datetime(2019, 10, 26),
+        "end": datetime(2022, 3, 30)
+    },
+    "XXIII Governo (Mar 2022 - Abr 2024)": {
+        "start": datetime(2022, 3, 30),
+        "end": datetime(2024, 4, 2)
+    },
+    "XXIV Governo (Abr 2024 - Jun 2025)": {
+        "start": datetime(2024, 4, 2),
+        "end": datetime(2025, 6, 5)
+    },
+    "XXV Governo (Jun 2025 - Presente)": {
+        "start": datetime(2025, 6, 5),
+        "end": None
+    }
+}
+
+TARGET_PARTIES = ["PS", "PSD", "CH", "IL", "PCP", "BE", "PAN", "L", "CDS-PP"]
+
 def normalize_text(text):
     # Remove accents
     nfkd_form = unicodedata.normalize('NFKD', str(text))
@@ -429,7 +460,7 @@ if not data_df.empty:
                             with col1:
                                 # --- Resumo da Proposta ---
                                 proposing_party_text = ""
-                                if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
+                                if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
                                     proposing_party_text = row['proposal_proposing_party']
 
                                 session_date_str_display = ""
@@ -502,7 +533,7 @@ if not data_df.empty:
                         with col1:
                             # --- Resumo da Proposta ---
                             proposing_party_text = ""
-                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
+                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
                                 proposing_party_text = row['proposal_proposing_party']
 
                             # Date is not available in this fallback, so only party
@@ -572,12 +603,87 @@ if not data_df.empty:
             st.query_params["from_page"] = "home"
             st.switch_page("pages/1_Browse_Topics.py")
 
+    # --- Party Statistics Section ---
+    st.markdown("---") # Visual separator
+    st.markdown("### Estatísticas de Propostas por Partido Político")
+
+    selected_government_stats_label = st.selectbox(
+        "Selecionar Período Governativo:",
+        options=list(GOVERNMENT_PERIODS.keys()),
+        index=0,  # Default to "Todos"
+        key="gov_period_stats_filter"
+    )
+
+    # Filter data based on selected government period
+    filtered_df_stats = data_df.copy()
+    if selected_government_stats_label != "Todos":
+        period_info = GOVERNMENT_PERIODS[selected_government_stats_label]
+        start_date = period_info["start"]
+        end_date = period_info["end"]
+
+        # Ensure session_date is datetime
+        if 'session_date' in filtered_df_stats.columns and not pd.api.types.is_datetime64_any_dtype(filtered_df_stats['session_date']):
+            filtered_df_stats['session_date'] = pd.to_datetime(filtered_df_stats['session_date'], errors='coerce')
+
+        if pd.notna(start_date):
+            filtered_df_stats = filtered_df_stats[~filtered_df_stats['session_date'].isna() & (filtered_df_stats['session_date'] >= start_date)]
+        if pd.notna(end_date):
+            filtered_df_stats = filtered_df_stats[~filtered_df_stats['session_date'].isna() & (filtered_df_stats['session_date'] <= end_date)]
+    
+    if filtered_df_stats.empty and selected_government_stats_label != "Todos":
+        st.info(f"Não foram encontradas propostas para o período '{selected_government_stats_label}'.")
+    elif not data_df.empty: # Ensure data_df itself is not empty before proceeding
+        party_proposal_stats = {party: {'Approved': 0, 'Rejected': 0, 'Unknown': 0} for party in TARGET_PARTIES}
+
+        # Make sure to use the potentially time-filtered dataframe for stats calculation
+        df_for_stats = filtered_df_stats if selected_government_stats_label != "Todos" else data_df
+
+        for _, row in df_for_stats.iterrows():
+            proposing_party_str = str(row.get('proposal_proposing_party', ''))
+            approval_status = row.get('proposal_approval_status') # Already pd.to_numeric with errors='coerce'
+
+            for party_name in TARGET_PARTIES:
+                if party_name in proposing_party_str:
+                    if pd.isna(approval_status):
+                        party_proposal_stats[party_name]['Unknown'] += 1
+                    elif approval_status == 1.0:
+                        party_proposal_stats[party_name]['Approved'] += 1
+                    elif approval_status == 0.0:
+                        party_proposal_stats[party_name]['Rejected'] += 1
+                    else: # Should not happen if status is 0, 1 or NaN
+                        party_proposal_stats[party_name]['Unknown'] += 1
+        
+        chart_data_list = []
+        for party, counts in party_proposal_stats.items():
+            chart_data_list.append({'Party': party, 'Status': 'Approved', 'Count': counts['Approved']})
+            chart_data_list.append({'Party': party, 'Status': 'Rejected', 'Count': counts['Rejected']})
+            chart_data_list.append({'Party': party, 'Status': 'Unknown', 'Count': counts['Unknown']})
+        
+        chart_df = pd.DataFrame(chart_data_list)
+
+        # Filter out parties with no proposals at all for cleaner chart
+        party_totals = chart_df.groupby('Party')['Count'].sum()
+        parties_with_proposals = party_totals[party_totals > 0].index.tolist()
+        chart_df_filtered = chart_df[chart_df['Party'].isin(parties_with_proposals)]
+
+        if not chart_df_filtered.empty:
+            status_order = ['Approved', 'Rejected', 'Unknown']
+            color_scale = alt.Scale(domain=status_order, range=['#2ca02c', '#d62728', '#808080']) # Green, Red, Grey
+
+            # Create an explicit sort order for stacking
+            chart_df_filtered['status_order_val'] = chart_df_filtered['Status'].map({status: i for i, status in enumerate(status_order)})
+
+            chart = alt.Chart(chart_df_filtered).mark_bar().encode(
+                x=alt.X('sum(Count):Q', title='Número de Propostas Apresentadas', stack='zero'),
+                y=alt.Y('Party:N', sort=alt.EncodingSortField(field="Count", op="sum", order='descending'), title='Partido'),
+                color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Proposta')),
+                order=alt.Order('status_order_val:Q', sort='ascending') # Ensures consistent stack order
+            ).properties(
+                title=f"Desempenho de Propostas por Partido ({selected_government_stats_label})"
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info(f"Não há dados de propostas para exibir para o período '{selected_government_stats_label}' com os partidos selecionados.")
+
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
-
-# --- Footer ---
-st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial.<br>A informação pode conter erros. <a href=https://github.com/luistodobom/vototransparente/issues>Reporte erros no Github.</a></div>", unsafe_allow_html=True)
-
-# --- Consistent Sidebar Navigation ---
-st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
-st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
