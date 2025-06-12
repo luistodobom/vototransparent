@@ -621,7 +621,6 @@ if not data_df.empty:
         start_date = period_info["start"]
         end_date = period_info["end"]
 
-        # Ensure session_date is datetime
         if 'session_date' in filtered_df_stats.columns and not pd.api.types.is_datetime64_any_dtype(filtered_df_stats['session_date']):
             filtered_df_stats['session_date'] = pd.to_datetime(filtered_df_stats['session_date'], errors='coerce')
 
@@ -632,58 +631,69 @@ if not data_df.empty:
     
     if filtered_df_stats.empty and selected_government_stats_label != "Todos":
         st.info(f"Não foram encontradas propostas para o período '{selected_government_stats_label}'.")
-    elif not data_df.empty: # Ensure data_df itself is not empty before proceeding
-        party_proposal_stats = {party: {'Approved': 0, 'Rejected': 0, 'Unknown': 0} for party in TARGET_PARTIES}
+    elif not data_df.empty:
+        base_df_for_period = filtered_df_stats # This is already time-filtered or the full data_df if "Todos"
 
-        # Make sure to use the potentially time-filtered dataframe for stats calculation
-        df_for_stats = filtered_df_stats if selected_government_stats_label != "Todos" else data_df
+        # Calculate total unique proposals in the selected period with a known outcome (Approved/Rejected)
+        unique_proposals_in_period_df = base_df_for_period.drop_duplicates(subset=['issue_identifier'])
+        known_status_proposals_in_period_df = unique_proposals_in_period_df[unique_proposals_in_period_df['proposal_approval_status'].isin([0.0, 1.0])]
+        total_proposals_for_denominator = len(known_status_proposals_in_period_df)
 
-        for _, row in df_for_stats.iterrows():
+        party_proposal_stats = {party: {'Approved': 0, 'Rejected': 0} for party in TARGET_PARTIES}
+
+        # Iterate over unique proposals in the period to populate party_proposal_stats
+        for _, row in unique_proposals_in_period_df.iterrows(): # Iterate unique proposals
             proposing_party_str = str(row.get('proposal_proposing_party', ''))
-            approval_status = row.get('proposal_approval_status') # Already pd.to_numeric with errors='coerce'
+            approval_status = row.get('proposal_approval_status')
 
-            for party_name in TARGET_PARTIES:
-                if party_name in proposing_party_str:
-                    if pd.isna(approval_status):
-                        party_proposal_stats[party_name]['Unknown'] += 1
-                    elif approval_status == 1.0:
+            if approval_status == 1.0:  # Approved
+                for party_name in TARGET_PARTIES:
+                    if party_name in proposing_party_str:
                         party_proposal_stats[party_name]['Approved'] += 1
-                    elif approval_status == 0.0:
+            elif approval_status == 0.0:  # Rejected
+                for party_name in TARGET_PARTIES:
+                    if party_name in proposing_party_str:
                         party_proposal_stats[party_name]['Rejected'] += 1
-                    else: # Should not happen if status is 0, 1 or NaN
-                        party_proposal_stats[party_name]['Unknown'] += 1
         
         chart_data_list = []
-        for party, counts in party_proposal_stats.items():
-            chart_data_list.append({'Party': party, 'Status': 'Approved', 'Count': counts['Approved']})
-            chart_data_list.append({'Party': party, 'Status': 'Rejected', 'Count': counts['Rejected']})
-            chart_data_list.append({'Party': party, 'Status': 'Unknown', 'Count': counts['Unknown']})
+        if total_proposals_for_denominator > 0:
+            for party, counts in party_proposal_stats.items():
+                approved_count = counts['Approved']
+                rejected_count = counts['Rejected']
+
+                percentage_approved = (approved_count / total_proposals_for_denominator) * 100
+                percentage_rejected = (rejected_count / total_proposals_for_denominator) * 100
+
+                if percentage_approved > 0:
+                    chart_data_list.append({'Party': party, 'Status': 'Approved', 'Percentage': percentage_approved})
+                if percentage_rejected > 0:
+                    chart_data_list.append({'Party': party, 'Status': 'Rejected', 'Percentage': percentage_rejected})
         
         chart_df = pd.DataFrame(chart_data_list)
 
-        # Filter out parties with no proposals at all for cleaner chart
-        party_totals = chart_df.groupby('Party')['Count'].sum()
-        parties_with_proposals = party_totals[party_totals > 0].index.tolist()
-        chart_df_filtered = chart_df[chart_df['Party'].isin(parties_with_proposals)]
+        chart_df_filtered = pd.DataFrame() # Initialize as empty
+        if not chart_df.empty:
+            party_totals = chart_df.groupby('Party')['Percentage'].sum()
+            parties_with_proposals = party_totals[party_totals > 0].index.tolist()
+            chart_df_filtered = chart_df[chart_df['Party'].isin(parties_with_proposals)]
 
         if not chart_df_filtered.empty:
-            status_order = ['Approved', 'Rejected', 'Unknown']
-            color_scale = alt.Scale(domain=status_order, range=['#2ca02c', '#d62728', '#808080']) # Green, Red, Grey
+            status_order = ['Approved', 'Rejected']
+            color_scale = alt.Scale(domain=status_order, range=['#2ca02c', '#d62728']) # Green, Red
 
-            # Create an explicit sort order for stacking
-            chart_df_filtered['status_order_val'] = chart_df_filtered['Status'].map({status: i for i, status in enumerate(status_order)})
+            chart_df_filtered['status_order_val'] = chart_df_filtered['Status'].map({'Approved': 0, 'Rejected': 1})
 
             chart = alt.Chart(chart_df_filtered).mark_bar().encode(
-                x=alt.X('sum(Count):Q', title='Número de Propostas Apresentadas', stack='zero'),
-                y=alt.Y('Party:N', sort=alt.EncodingSortField(field="Count", op="sum", order='descending'), title='Partido'),
+                x=alt.X('sum(Percentage):Q', title='Quota-parte das Propostas Totais no Período (%)', stack='zero', axis=alt.Axis(format='.1f')), # Format to 1 decimal place
+                y=alt.Y('Party:N', sort=alt.EncodingSortField(field="Percentage", op="sum", order='descending'), title='Partido'),
                 color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Proposta', orient='bottom')),
-                order=alt.Order('status_order_val:Q', sort='ascending') # Ensures consistent stack order
+                order=alt.Order('status_order_val:Q', sort='ascending')
             ).properties(
                 title=f"Desempenho de Propostas por Partido ({selected_government_stats_label})"
             )
             st.altair_chart(chart, use_container_width=True)
         else:
-            st.info(f"Não há dados de propostas para exibir para o período '{selected_government_stats_label}' com os partidos selecionados.")
+            st.info(f"Não há dados de propostas para exibir para o período '{selected_government_stats_label}' com os partidos selecionados ou nenhuma proposta com resultado conhecido no período.")
 
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
