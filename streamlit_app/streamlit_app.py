@@ -390,12 +390,13 @@ if not data_df.empty:
         st.session_state.last_page = 'home'
 
     # --- Search Functionality ---
+    # Centered "Browse All Votes" link/button
     search_query = st.text_input(
         "Pesquisar propostas", # Add a descriptive label
         placeholder="Pesquisar por palavra-chave...",
         value=st.session_state.search_query,  # Restore previous search query
         key="search_input",
-        label_visibility="collapsed" # Add this if you want to hide the label "Pesquisar propostas"
+        label_visibility="collapsed" # Add this if you want to hide the label "Pesquisar propostas",
     )
 
     # Update session state when search query changes
@@ -460,7 +461,7 @@ if not data_df.empty:
                             with col1:
                                 # --- Resumo da Proposta ---
                                 proposing_party_text = ""
-                                if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
+                                if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
                                     proposing_party_text = row['proposal_proposing_party']
 
                                 session_date_str_display = ""
@@ -533,7 +534,7 @@ if not data_df.empty:
                         with col1:
                             # --- Resumo da Proposta ---
                             proposing_party_text = ""
-                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
+                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
                                 proposing_party_text = row['proposal_proposing_party']
 
                             # Date is not available in this fallback, so only party
@@ -605,14 +606,17 @@ if not data_df.empty:
 
     # --- Party Statistics Section ---
     st.markdown("---") # Visual separator
-    st.markdown("### Estatísticas de Propostas por Partido Político")
+    st.markdown("<h3 style='text-align: center;'>Propostas por Partido Político</h3>", unsafe_allow_html=True)
 
-    selected_government_stats_label = st.selectbox(
-        "Selecionar Período Governativo:",
-        options=list(GOVERNMENT_PERIODS.keys()),
-        index=0,  # Default to "Todos"
-        key="gov_period_stats_filter"
-    )
+    _, col_gov_select, col_gov_empty = st.columns([1, 2, 1])
+    with col_gov_select:
+        selected_government_stats_label = st.selectbox(
+            "Selecionar Período Governativo:",
+            options=list(GOVERNMENT_PERIODS.keys()),
+            index=0,  # Default to "Todos"
+            key="gov_period_stats_filter"
+        )
+    # col_gov_empty is intentionally left empty for 1/3 spacing
 
     # Filter data based on selected government period
     filtered_df_stats = data_df.copy()
@@ -665,9 +669,9 @@ if not data_df.empty:
                 percentage_rejected = (rejected_count / total_proposals_for_denominator) * 100
 
                 if percentage_approved > 0:
-                    chart_data_list.append({'Party': party, 'Status': 'Approved', 'Percentage': percentage_approved})
+                    chart_data_list.append({'Party': party, 'Status': 'Aprovado', 'Percentage': percentage_approved})
                 if percentage_rejected > 0:
-                    chart_data_list.append({'Party': party, 'Status': 'Rejected', 'Percentage': percentage_rejected})
+                    chart_data_list.append({'Party': party, 'Status': 'Rejeitado', 'Percentage': percentage_rejected})
         
         chart_df = pd.DataFrame(chart_data_list)
 
@@ -678,21 +682,19 @@ if not data_df.empty:
             chart_df_filtered = chart_df[chart_df['Party'].isin(parties_with_proposals)]
 
         if not chart_df_filtered.empty:
-            status_order = ['Approved', 'Rejected']
+            status_order = ['Aprovado', 'Rejeitado']
             color_scale = alt.Scale(domain=status_order, range=['#2ca02c', '#d62728']) # Green, Red
 
-            chart_df_filtered['status_order_val'] = chart_df_filtered['Status'].map({'Approved': 0, 'Rejected': 1})
+            chart_df_filtered['status_order_val'] = chart_df_filtered['Status'].map({'Aprovado': 0, 'Rejeitado': 1})
 
             chart = alt.Chart(chart_df_filtered).mark_bar().encode(
-                x=alt.X('sum(Percentage):Q', title='Quota-parte das Propostas Totais no Período (%)', stack='zero', axis=alt.Axis(format='.1f')), # Format to 1 decimal place
+                x=alt.X('sum(Percentage):Q', title='%', stack='zero', axis=alt.Axis(format='.0f')), # Format to 1 decimal place
                 y=alt.Y('Party:N', sort=alt.EncodingSortField(field="Percentage", op="sum", order='descending'), title='Partido'),
-                color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Proposta', orient='bottom')),
+                color=alt.Color('Status:N', scale=color_scale, legend=alt.Legend(title='Resultado da Votação', orient='bottom')),
                 order=alt.Order('status_order_val:Q', sort='ascending')
-            ).properties(
-                title=f"Desempenho de Propostas por Partido ({selected_government_stats_label})"
             )
             # Use columns to control chart width
-            col_chart_viz, col_chart_empty = st.columns([2,1]) # Chart takes 2/3, empty space takes 1/3
+            _, col_chart_viz, col_chart_empty = st.columns([1,4,1]) # Chart takes 2/3, empty space takes 1/3
             with col_chart_viz:
                 st.altair_chart(chart, use_container_width=True)
         else:
