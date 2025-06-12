@@ -691,7 +691,10 @@ if not data_df.empty:
             ).properties(
                 title=f"Desempenho de Propostas por Partido ({selected_government_stats_label})"
             )
-            st.altair_chart(chart, use_container_width=True)
+            # Use columns to control chart width
+            col_chart_viz, col_chart_empty = st.columns([2,1]) # Chart takes 2/3, empty space takes 1/3
+            with col_chart_viz:
+                st.altair_chart(chart, use_container_width=True)
         else:
             st.info(f"Não há dados de propostas para exibir para o período '{selected_government_stats_label}' com os partidos selecionados ou nenhuma proposta com resultado conhecido no período.")
 
