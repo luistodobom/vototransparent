@@ -702,3 +702,6 @@ if not data_df.empty:
 
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
+
+st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
+st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
