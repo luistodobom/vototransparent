@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 # --- Configuration ---
 
-YEAR = 2021
+YEAR = 2022
 DATAFRAME_PATH = f"data/parliament_data_{YEAR}.csv"
 SESSION_PDF_DIR = "data/session_pdfs"
 PROPOSAL_DOC_DIR = "data/proposal_docs"

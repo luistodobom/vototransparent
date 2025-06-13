@@ -19,7 +19,7 @@ def create_prompt_for_session_pdf(hyperlink_table_pairs, unpaired_links, session
         hyperlink_table_pairs, unpaired_links, pre_2020)
     mp_counts_text = build_mp_counts_text(session_date)
 
-    if session_date is None:
+    if session_date is None or session_date >= date(2020, 1, 1):
         return create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text), response_schema
     else:
         return create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text), response_schema
@@ -97,6 +97,9 @@ Formato de exemplo de um objeto no array JSON (assumindo dados da XIII Legislatu
 
 
 def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text):
+
+    print("---------------------The structured data text is:")
+    print(structured_data_text)
 
     prompt = f"""Você está analisando um registro de votações parlamentares portuguesas. Eu já extraí dados estruturados de propostas do PDF. Estes dados consistem em:
     1. Grupos de propostas: Cada grupo contém um ou mais hiperlinks (propostas) que *aparentam estar* associados a uma única tabela de votação encontrada após eles na mesma página. **A lista de hiperlinks fornecida para cada "grupo" é uma extração de melhor esforço de links encontrados textualmente acima de uma tabela. É possível que nem todos os hiperlinks listados sejam relevantes para essa tabela específica, e alguns podem não estar relacionados ou ser de contextos diferentes. Sua tarefa inclui discernir as propostas reais relacionadas à tabela a partir desta lista.**

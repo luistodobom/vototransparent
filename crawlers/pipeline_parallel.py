@@ -83,10 +83,10 @@ def extract_votes_from_session_pdf(session_pdf_path, session_date):
                     f"{partition_label}: No data extracted from PDF content, skipping LLM call.")
                 continue
 
-            prompt, responseSchema = create_prompt_for_session_pdf(
+            prompt = create_prompt_for_session_pdf(
                 hyperlink_table_pairs, unpaired_links, session_date)
             extracted_data, llm_error = call_gemini_api(
-                prompt, expect_json=True, responseSchema=responseSchema)
+                prompt, expect_json=True, responseSchema=None)
 
             if llm_error:
                 error_message = f"LLM API call failed: {llm_error}"
