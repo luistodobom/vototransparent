@@ -174,12 +174,13 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             except (ValueError, json.JSONDecodeError):
                 continue  # Skip rows with malformed voting info
 
-            if not isinstance(voting_details, list):
+            # Handle the actual CSV format: {"PS": {"Favor": 120, ...}, "PSD": {...}, ...}
+            if not isinstance(voting_details, dict):
                 continue
 
             # Determine overall vote outcome
-            total_favor = sum(party.get('votes', {}).get('Favor', 0) for party in voting_details)
-            total_contra = sum(party.get('votes', {}).get('Contra', 0) for party in voting_details)
+            total_favor = sum(party_data.get('Favor', 0) for party_data in voting_details.values())
+            total_contra = sum(party_data.get('Contra', 0) for party_data in voting_details.values())
             
             overall_outcome = "Resultado Desconhecido"
             if pd.notna(proposal_approval_status_raw):
@@ -197,12 +198,9 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
 
             # Store party votes for this proposal
             proposal_party_votes_list = []
-            for party_vote_info in voting_details:
-                if not isinstance(party_vote_info, dict):
+            for party_name, votes_data in voting_details.items():
+                if not isinstance(votes_data, dict):
                     continue
-                
-                party_name = party_vote_info.get('party_name', 'N/A')
-                votes_data = party_vote_info.get('votes', {})
                 
                 votes_favor = votes_data.get('Favor', 0)
                 votes_against = votes_data.get('Contra', 0)
