@@ -248,9 +248,9 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links, pre_20
     if unpaired_links:
         has_data = True
         if pre_2020:
-            structured_data_text += "PROPOSALS LINKS (voting should be below this but may be approved unanimously or in groups where 1 result is the result of all the proposals above it.):\n"
+            structured_data_text += "PROPOSALS LINKS (voting should be below this but may be approved unanimously or in groups where 1 result is the result of all the proposals acima dele.):\n"
         else:
-            structured_data_text += "\nPROPOSALS WITHOUT INDIVIDUAL VOTING TABLES (may be approved unanimously or in groups where 1 result is the result of all the proposals above it.):\n"
+            structured_data_text += "\nPROPOSALS WITHOUT INDIVIDUAL VOTING TABLES (may be approved unanimously or in groups where 1 result is the result of all the proposals acima dele.):\n"
         for i, link in enumerate(unpaired_links, 1):
             structured_data_text += f"\n{i}. PROPOSAL TEXT: {link['hyperlink_text']}\n"
             structured_data_text += f"   LINK: {link['uri']}\n"
@@ -359,10 +359,24 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
     if not genai_client:
         return None, "GEMINI_API_KEY not configured"
 
-    print(f"Calling Gemini API. Prompt length: {len(prompt_text)}")
+    actual_prompt_text = prompt_text
+    actual_response_schema = responseSchema
+
+    # Handle cases where prompt_text might be a tuple (prompt_string, schema_dict)
+    # This can happen if create_prompt_for_proposal_pdf()'s result is passed directly.
+    if isinstance(prompt_text, tuple) and len(prompt_text) == 2:
+        potential_prompt_str, potential_schema_dict = prompt_text
+        if isinstance(potential_prompt_str, str) and isinstance(potential_schema_dict, dict):
+            actual_prompt_text = potential_prompt_str
+            if responseSchema is None: # Only use schema from tuple if no explicit schema was passed
+                actual_response_schema = potential_schema_dict
+            # If responseSchema was explicitly passed, it takes precedence.
+            # actual_prompt_text is now correctly the string part.
+
+    print(f"Calling Gemini API. Prompt length: {len(actual_prompt_text)}")
 
     # Prepare contents array
-    contents = [prompt_text]
+    contents = [actual_prompt_text]
 
     # If a document is provided, upload it using the File API
     if document_path and os.path.exists(document_path):
@@ -380,7 +394,7 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
         config = {
             "response_mime_type": "application/json",
             "temperature": 0,
-            "responseSchema": responseSchema
+            "responseSchema": actual_response_schema # Use the potentially corrected schema
         }
 
     for attempt in range(LLM_RETRY_ATTEMPTS):
