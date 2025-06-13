@@ -32,11 +32,11 @@ def create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text)
     MP counts are provided based on the session_date.
     """
 
-    prompt = f"""Você está analisando um registro de votações parlamentares portuguesas de um período anterior a 2020. Os dados de votação neste formato não usam tabelas, mas sim listas textuais de partidos que votaram a favor, contra ou se abstiveram.
+    prompt = f"""Você está analisando um registro de votações parlamentares portuguesas de um período anterior a 2020. Os dados de votação neste formato não usam tabelas, mas sim listas textuais de partidos que votaram a favor, contra ou se abstiveram. Ocasionalmente, um 'APPROVAL TEXT' é fornecido, indicando o resultado da votação (ex: "Aprovado", "Rejeitado").
 
 Os dados estruturados fornecidos (`structured_data_text`) contêm excertos de texto do PDF, cada um descrevendo uma ou mais propostas e como os partidos votaram. Um exemplo de como uma proposta pode ser descrita no texto:
 "Projeto de Resolução n.º 958/XIII/2.ª (PCP) – Pela reabertura do Serviço de Urgência Básica no Hospital de Espinho; Favor – BE, PCP, PEV e PAN; Contra – Aprovado; Abstenção – PSD, PS e CDS-PP"
-Note que "Contra – Aprovado" significa que a proposta foi aprovada, e a lista de partidos que votaram contra pode não estar explícita ou ser inferida.
+Note que "Contra – Aprovado" significa que a proposta foi aprovada, e a lista de partidos que votaram contra pode não estar explícita ou ser inferida. O 'APPROVAL TEXT' quando disponível, pode clarificar o resultado.
 
 {structured_data_text}
 
@@ -52,18 +52,20 @@ Para cada proposta, extraia:
         -   Utilize a contagem de deputados fornecida abaixo para o período da sessão para determinar X, Y, Z, W e Total.
         -   Se um partido está listado em "Favor", todos os seus deputados são contados como "Favor". O mesmo para "Contra" e "Abstenção".
         -   Se um partido não é mencionado em nenhuma lista de votação para uma proposta, ele não deve ser incluído no 'voting_summary' dessa proposta.
-    4. 'proposal_approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Se não estiver claro, defina como nulo. Isso é derivado do 'voting_summary'.
+    4. 'proposal_approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Utilize o campo 'APPROVAL TEXT' (se fornecido nos dados estruturados) como principal indicador para este status. Se 'APPROVAL TEXT' indicar "Aprovado" (ou variações), defina como 1. Se indicar "Rejeitado" ou "Prejudicado" (ou variações), defina como 0. Se não estiver claro ou 'APPROVAL TEXT' estiver ausente, infira do 'voting_summary' se possível, caso contrário defina como nulo.
 
 {mp_counts_text}
 
     Notas importantes:
     - Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
-    - Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e proposal_approval_status como 1.
+    - Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e proposal_approval_status como 1. O 'APPROVAL TEXT' pode indicar isso.
     - Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas. **Conforme instruído acima, crie um objeto JSON separado para cada proposta nestes casos.**
     - Sempre forneça contagens numéricas no resumo da votação, não apenas marcas 'X'.
+    - O campo 'APPROVAL TEXT', quando presente nos dados estruturados, fornece o texto de resultado (ex: "Aprovado por unanimidade") encontrado próximo à proposta no PDF. Use-o para preencher 'proposal_approval_status'.
+    - Para propostas em 'PROPOSALS LINKS', se uma sequência de propostas aparecer e apenas a última tiver um 'APPROVAL TEXT', avalie se este texto se aplica às propostas imediatamente anteriores nessa sequência que não possuem 'APPROVAL TEXT' próprios.
 
     Retorne apenas um array JSON válido. Cada objeto no array corresponde a um hiperlink/proposta.
-    Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo e 'proposal_approval_status' como nulo.
+    Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo e 'proposal_approval_status' como nulo (a menos que 'APPROVAL TEXT' indique claramente o status).
 
 Formato de exemplo de um objeto no array JSON (assumindo dados da XIII Legislatura para o exemplo de contagem):
     [
@@ -74,7 +76,7 @@ Formato de exemplo de um objeto no array JSON (assumindo dados da XIII Legislatu
         "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
         "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
         }},
-        "proposal_approval_status": 1
+        "proposal_approval_status": 1 // Inferido do voting_summary ou do APPROVAL TEXT
     }},
     {{ // Do mesmo grupo, segundo hiperlink (assumindo que é outra proposta válida relacionada à mesma conclusão)
         "proposal_name": "Alteração ao Projeto de Lei 123/XV/2",
@@ -83,13 +85,13 @@ Formato de exemplo de um objeto no array JSON (assumindo dados da XIII Legislatu
         "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
         "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
         }},
-        "proposal_approval_status": 1
+        "proposal_approval_status": 1 // Inferido do voting_summary ou do APPROVAL TEXT
     }},
-    {{ // Uma proposta não pareada
+    {{ // Uma proposta não pareada, com APPROVAL TEXT
         "proposal_name": "Voto de Pesar XYZ",
         "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=ZZZZZ",
-        "voting_summary": null, // Ou inferido se unânime, por exemplo, {{"PS": {{"Favor": 100, ...}}}}
-        "proposal_approval_status": null // Ou inferido, por exemplo, 1 se aprovação unânime
+        "voting_summary": null, // Pode ser inferido se APPROVAL TEXT for "Aprovado por Unanimidade"
+        "proposal_approval_status": 1 // Derivado do APPROVAL TEXT: "Aprovado por unanimidade"
     }}
     ]
 """
@@ -102,8 +104,8 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
     print(structured_data_text)
 
     prompt = f"""Você está analisando um registro de votações parlamentares portuguesas. Eu já extraí dados estruturados de propostas do PDF. Estes dados consistem em:
-    1. Grupos de propostas: Cada grupo contém um ou mais hiperlinks (propostas) que *aparentam estar* associados a uma única tabela de votação encontrada após eles na mesma página. **A lista de hiperlinks fornecida para cada "grupo" é uma extração de melhor esforço de links encontrados textualmente acima de uma tabela. É possível que nem todos os hiperlinks listados sejam relevantes para essa tabela específica, e alguns podem não estar relacionados ou ser de contextos diferentes. Sua tarefa inclui discernir as propostas reais relacionadas à tabela a partir desta lista.**
-    2. Propostas não pareadas: Estes são hiperlinks que não tinham uma tabela imediatamente a seguir.
+    1. Grupos de propostas: Cada grupo contém um ou mais hiperlinks (propostas) que *aparentam estar* associados a uma única tabela de votação encontrada após eles na mesma página. Cada grupo também pode ter um 'APPROVAL TEXT' associado, que é uma linha de texto como "Aprovado" ou "Rejeitado" encontrada perto da tabela.
+    2. Propostas não pareadas: Estes são hiperlinks que não tinham uma tabela imediatamente a seguir. Eles também podem ter um 'APPROVAL TEXT' associado.
 
     {structured_data_text}
 
@@ -111,9 +113,9 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
     **A associação de hiperlinks a tabelas é uma tentativa baseada na proximidade no documento. Nem todos os hiperlinks listados acima de uma tabela pertencem necessariamente a essa votação; alguns podem ser de outros contextos. O modelo deve analisar criticamente para determinar a relevância.**
 
     - **Para "GRUPOS" de hiperlinks que parecem compartilhar uma única tabela (indicado como "TABELA DE VOTAÇÃO COMPARTILHADA POR ESTE GRUPO"):**
-        - **Analise cuidadosamente cada hiperlink no grupo. É possível que múltiplos hiperlinks sejam propostas válidas que foram votadas em bloco, usando a mesma tabela de resultados.**
-        - **Se este for o caso, você DEVE criar um objeto JSON separado para CADA UMA dessas propostas (hiperlinks) válidas. Cada um desses objetos JSON deve conter os detalhes da votação da tabela compartilhada.** Não agrupe várias propostas em um único objeto JSON nem ignore propostas válidas dentro do grupo. Filtre quaisquer hiperlinks que claramente não sejam propostas votadas (ex: links para páginas genéricas, documentos suplementares não votados).
-    - Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação conforme descrito abaixo.
+        - **Analise cuidadosamente cada hiperlink no grupo. É possível que múltiplos hiperlinks sejam propostas válidas que foram votadas em bloco, usando a mesma tabela de resultados e o mesmo 'APPROVAL TEXT'.**
+        - **Se este for o caso, você DEVE criar um objeto JSON separado para CADA UMA dessas propostas (hiperlinks) válidas. Cada um desses objetos JSON deve conter os detalhes da votação da tabela compartilhada e o status de aprovação derivado do 'APPROVAL TEXT' do grupo (se disponível) ou da tabela.** Não agrupe várias propostas em um único objeto JSON nem ignore propostas válidas dentro do grupo. Filtre quaisquer hiperlinks que claramente não sejam propostas votadas (ex: links para páginas genéricas, documentos suplementares não votados).
+    - Para propostas não pareadas (listadas sob "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS"), tente inferir os detalhes da votação e use o 'APPROVAL TEXT' (se disponível) para determinar o status da aprovação.
 
     Para cada proposta (hiperlink), extraia:
 
@@ -121,8 +123,8 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
     2. 'proposal_link': O URI/hiperlink para esta proposta. Isso vem do 'URI' do hiperlink.
     3. 'voting_summary': O detalhamento da votação por partido.
         - Para propostas em um grupo com uma tabela compartilhada: Analise a tabela COMPARTILHADA para extrair as contagens de votos para cada partido (PS, PSD, CH, IL, PCP, BE, PAN, L, etc.)
-        - Para propostas não pareadas: Se a proposta aparecer na seção "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS", verifique se há algum indicador de texto no documento original (não fornecido aqui, então infira se possível a partir do contexto ou padrões comuns como aprovação unânime para certos tipos de propostas) sugerindo aprovação unânime ou votação em grupo. Se não houver informação, defina como nulo.
-    4. 'proposal_approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Se não estiver claro, defina como nulo. Isso é derivado do 'voting_summary'.
+        - Para propostas não pareadas: Se a proposta aparecer na seção "PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS", verifique se há algum indicador de texto no documento original (o 'APPROVAL TEXT' fornecido é a melhor fonte aqui). Se não houver informação suficiente para um 'voting_summary' detalhado, defina como nulo, mas ainda tente preencher 'proposal_approval_status' com base no 'APPROVAL TEXT'.
+    4. 'proposal_approval_status': Um inteiro, 1 se a proposta foi aprovada, 0 se foi rejeitada. Utilize o campo 'APPROVAL TEXT' (se fornecido nos dados estruturados para o grupo ou para a proposta individual) como principal indicador para este status. Se 'APPROVAL TEXT' indicar "Aprovado" (ou variações), defina como 1. Se indicar "Rejeitado" ou "Prejudicado" (ou variações), defina como 0. Se não estiver claro ou 'APPROVAL TEXT' estiver ausente, infira do 'voting_summary' (se disponível e conclusivo), caso contrário defina como nulo.
 
 
 {mp_counts_text}
@@ -132,18 +134,19 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
     - Se houver uma tabela de votação: Analise a tabela para extrair as contagens de votos para cada partido.
     - Use o formato: {{"NomeDoPartido": {{"Favor": X, "Contra": Y, "Abstenção": Z, "Não Votaram": W, "TotalDeputados": Total}}}}
     - Se a tabela usar marcas 'X': A marca 'X' indica que todos os MPs daquele partido votaram daquela maneira. Use o número total mostrado para aquele partido, se disponível, caso contrário, infira com base nos tamanhos típicos dos partidos, se necessário (menos ideal).
-    - Se não houver tabela individual, mas for provavelmente unânime: Indique a votação unânime com as distribuições de partido apropriadas, se puder inferi-las, ou marque como unânime.
+    - Se não houver tabela individual, mas o 'APPROVAL TEXT' indicar aprovação unânime (ex: "Aprovado por unanimidade"): Indique a votação unânime com as distribuições de partido apropriadas, se puder inferi-las, ou marque como unânime. Se o 'APPROVAL TEXT' apenas disser "Aprovado", e não houver tabela, o 'voting_summary' pode permanecer nulo, mas 'proposal_approval_status' será 1.
 
     Notas importantes:
     - Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
-    - Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e proposal_approval_status como 1.
+    - O campo 'APPROVAL TEXT', quando presente nos dados estruturados, fornece o texto de resultado (ex: "Aprovado por unanimidade") encontrado próximo à proposta ou tabela no PDF. Use-o primariamente para preencher 'proposal_approval_status'.
     - Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas. **Conforme instruído acima, crie um objeto JSON separado para cada proposta nestes casos.**
     - Sempre forneça contagens numéricas no resumo da votação, não apenas marcas 'X'.
+    - Para propostas em 'PROPOSTAS SEM TABELAS DE VOTAÇÃO INDIVIDUAIS', se uma sequência de propostas aparecer e apenas a última tiver um 'APPROVAL TEXT', avalie se este texto se aplica às propostas imediatamente anteriores nessa sequência que não possuem tabelas ou 'APPROVAL TEXT' próprios.
 
     Retorne apenas um array JSON válido. Cada objeto no array corresponde a um hiperlink/proposta.
-    Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo e 'proposal_approval_status' como nulo.
+    Se você não conseguir determinar as informações de votação para uma proposta, ainda a inclua com seu 'proposal_name' e 'proposal_link', mas defina 'voting_summary' como nulo. O 'proposal_approval_status' deve ser definido com base no 'APPROVAL TEXT' se disponível, caso contrário, nulo.
 
-    Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tabela, e uma proposta não pareada):
+    Formato de exemplo (ilustrando um grupo de duas propostas compartilhando uma tabela e APPROVAL TEXT, e uma proposta não pareada com APPROVAL TEXT):
     [
     {{ // Do grupo, primeiro hiperlink (assumindo que é uma proposta válida relacionada à tabela)
         "proposal_name": "Projeto de Lei 123/XV/2",
@@ -152,7 +155,7 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
         "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
         "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
         }},
-        "proposal_approval_status": 1
+        "proposal_approval_status": 1 // Derivado do APPROVAL TEXT do grupo ou da tabela
     }},
     {{ // Do mesmo grupo, segundo hiperlink (assumindo que é outra proposta válida relacionada à mesma tabela)
         "proposal_name": "Alteração ao Projeto de Lei 123/XV/2",
@@ -161,13 +164,13 @@ def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text
         "PS": {{"Favor": 100, "Contra": 0, "Abstenção": 5, "Não Votaram": 2, "TotalDeputados": 107}},
         "PSD": {{"Favor": 0, "Contra": 65, "Abstenção": 0, "Não Votaram": 1, "TotalDeputados": 66}}
         }},
-        "proposal_approval_status": 1
+        "proposal_approval_status": 1 // Derivado do APPROVAL TEXT do grupo ou da tabela
     }},
-    {{ // Uma proposta não pareada
+    {{ // Uma proposta não pareada com APPROVAL TEXT
         "proposal_name": "Voto de Pesar XYZ",
         "proposal_link": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=ZZZZZ",
-        "voting_summary": null, // Ou inferido se unânime, por exemplo, {{"PS": {{"Favor": 100, ...}}}}
-        "proposal_approval_status": null // Ou inferido, por exemplo, 1 se aprovação unânime
+        "voting_summary": null, // Ou inferido se APPROVAL TEXT for "Aprovado por Unanimidade"
+        "proposal_approval_status": 1 // Derivado do APPROVAL TEXT: "Aprovado"
     }}
     ]
     """
@@ -231,7 +234,7 @@ def create_prompt_for_proposal_pdf():
 
 
 def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links, pre_2020=False):
-    """Format the structured data for the LLM, accommodating grouped hyperlinks."""
+    """Format the structured data for the LLM, accommodating grouped hyperlinks and approval text."""
     structured_data_text = "STRUCTURED PROPOSAL DATA EXTRACTED FROM PDF:\n\n"
     has_data = False
 
@@ -246,18 +249,24 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links, pre_20
             structured_data_text += f"  SHARED VOTING TABLE FOR THIS GROUP:\n"
             table_str = group['table_data'].to_string(index=False, header=True)
             structured_data_text += f"    {table_str.replace(chr(10), chr(10) + '    ')}\n"
+            if group.get('approval_text'):
+                structured_data_text += f"  APPROVAL TEXT: {group['approval_text']}\n"
             structured_data_text += "  " + "-"*50 + "\n"
 
     if unpaired_links:
         has_data = True
         if pre_2020:
-            structured_data_text += "PROPOSALS LINKS (voting should be below this but may be approved unanimously or in groups where 1 result is the result of all the proposals acima dele.):\n"
+            structured_data_text += "\nPROPOSALS LINKS (voting information may be in text or indicated by 'APPROVAL TEXT' found nearby; may be approved unanimously or in groups where one result applies to several proposals):\n"
         else:
-            structured_data_text += "\nPROPOSALS WITHOUT INDIVIDUAL VOTING TABLES (may be approved unanimously or in groups where 1 result is the result of all the proposals acima dele.):\n"
+            structured_data_text += "\nPROPOSALS WITHOUT INDIVIDUAL VOTING TABLES (may be approved unanimously or in groups; check 'APPROVAL TEXT' if available):\n"
+        
         for i, link in enumerate(unpaired_links, 1):
             structured_data_text += f"\n{i}. PROPOSAL TEXT: {link['hyperlink_text']}\n"
             structured_data_text += f"   LINK: {link['uri']}\n"
             structured_data_text += f"   PAGE: {link['page_num']}\n"
+            if link.get('approval_text'):
+                structured_data_text += f"   APPROVAL TEXT: {link['approval_text']}\n"
+            # No specific formatting for rect_y1 needed for LLM, it was for internal sorting/logic
 
     if not has_data:
         return "NO DATA EXTRACTED FROM PDF"
