@@ -20,9 +20,9 @@ def create_prompt_for_session_pdf(hyperlink_table_pairs, unpaired_links, session
     mp_counts_text = build_mp_counts_text(session_date)
 
     if session_date is None or session_date >= date(2020, 1, 1):
-        return create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text), response_schema
+        return create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text)#, response_schema
     else:
-        return create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text), response_schema
+        return create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text)#, response_schema
 
 
 def create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text):
@@ -56,7 +56,9 @@ Para cada proposta, extraia:
 
 {mp_counts_text}
 
+
     Notas importantes:
+    - Instrução para 'voting_summary': Para cada partido listado numa categoria de voto (Favor, Contra, Abstenção), atribua o número TOTAL de deputados desse partido a essa categoria. Os outros campos de voto (Contra, Abstenção, Não Votaram) serão 0 para essa entrada específica, a menos que o texto indique o contrário (improvável para este formato).
     - Alguns dos hiperlinks podem não ser propostas, mas sim guias suplementares ou outros documentos. Normalmente, o primeiro hiperlink que aparece em um determinado parágrafo é a proposta principal, e pode não estar sempre vinculado ao identificador da proposta, às vezes o texto do hiperlink é apenas um genérico "Texto Final". Filtre itens não-proposta se identificáveis.
     - Algumas propostas podem ser aprovadas "por unanimidade" - estas ainda devem ser incluídas com o resumo da votação indicando aprovação unânime e proposal_approval_status como 1. O 'APPROVAL TEXT' pode indicar isso.
     - Múltiplas propostas podem compartilhar o mesmo resultado de votação se foram votadas juntas. **Conforme instruído acima, crie um objeto JSON separado para cada proposta nestes casos.**
@@ -249,8 +251,11 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links, pre_20
             structured_data_text += f"  SHARED VOTING TABLE FOR THIS GROUP:\n"
             table_str = group['table_data'].to_string(index=False, header=True)
             structured_data_text += f"    {table_str.replace(chr(10), chr(10) + '    ')}\n"
-            if group.get('approval_text'):
-                structured_data_text += f"  APPROVAL TEXT: {group['approval_text']}\n"
+            # Check if approval_text exists and is not None/empty/whitespace
+            approval_text = group.get('approval_text')
+            print(f"DEBUG: Approval text for group {i}: {approval_text}")
+            if approval_text and approval_text.strip():
+                structured_data_text += f"  APPROVAL TEXT: {approval_text}\n"
             structured_data_text += "  " + "-"*50 + "\n"
 
     if unpaired_links:
@@ -264,8 +269,10 @@ def format_structured_data_for_llm(hyperlink_table_pairs, unpaired_links, pre_20
             structured_data_text += f"\n{i}. PROPOSAL TEXT: {link['hyperlink_text']}\n"
             structured_data_text += f"   LINK: {link['uri']}\n"
             structured_data_text += f"   PAGE: {link['page_num']}\n"
-            if link.get('approval_text'):
-                structured_data_text += f"   APPROVAL TEXT: {link['approval_text']}\n"
+            # Check if approval_text exists and is not None/empty/whitespace
+            approval_text = link.get('approval_text')
+            if approval_text and approval_text.strip():
+                structured_data_text += f"   APPROVAL TEXT: {approval_text}\n"
             # No specific formatting for rect_y1 needed for LLM, it was for internal sorting/logic
 
     if not has_data:
@@ -307,10 +314,7 @@ def build_mp_counts_text(session_date):
 
             mp_counts_text = f"""Composição parlamentar e contagem de deputados para referência ({selected_legislature['name']}):
 {party_details_str}
-Total de deputados: {selected_legislature['total_mps']}.
-
-Instrução para 'voting_summary': Para cada partido listado numa categoria de voto (Favor, Contra, Abstenção), atribua o número TOTAL de deputados desse partido a essa categoria. Por exemplo, se o {example_party_name} votou 'Favor', o 'voting_summary' para o {example_party_name} será `{{"Favor": {example_party_count}, "Contra": 0, "Abstenção": 0, "Não Votaram": 0, "TotalDeputados": {example_party_count}}}`. Os outros campos de voto (Contra, Abstenção, Não Votaram) serão 0 para essa entrada específica, a menos que o texto indique o contrário (improvável para este formato).
-"""
+Total de deputados: {selected_legislature['total_mps']}. """
     return mp_counts_text
 
 
@@ -412,7 +416,8 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
     for attempt in range(LLM_RETRY_ATTEMPTS):
         try:
             response = genai_client.models.generate_content(
-                model="gemini-2.5-flash-preview-05-20",
+                # model="gemini-2.5-flash-preview-05-20",
+                model='gemini-2.5-pro-preview-06-05',
                 contents=contents,
                 config=config if config else None
             )

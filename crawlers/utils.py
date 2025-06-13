@@ -139,6 +139,9 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
     A table is associated with all hyperlinks that appear directly before it
     on the same page and after any previously processed table or its associated hyperlinks.
     Includes 'approval_text' (e.g., "Aprovado", "Rejeitado") found after tables or unpaired links.
+    
+    Deduplicates proposals where the same proposal number appears multiple times,
+    keeping only versions with approval text when duplicates exist.
 
     Args:
         pdf_path (str): The path to the PDF file.
@@ -354,7 +357,120 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
             unpaired_hyperlinks_all.append(unpaired_link)
 
     doc_fitz.close()
+    
+    # Deduplicate proposals across both lists - keep ones with approval text when duplicates exist
+    extracted_pairs, unpaired_hyperlinks_all = _deduplicate_proposals_across_lists(extracted_pairs, unpaired_hyperlinks_all)
+    
     return extracted_pairs, unpaired_hyperlinks_all
+
+
+def _extract_proposal_number(text):
+    """
+    Extracts proposal number from text (e.g., "371/XVI" from various text formats).
+    Returns None if no proposal number is found.
+    """
+    import re
+    # Look for pattern like numbers/roman numerals (e.g., 371/XVI, 123/XV, etc.)
+    pattern = r'(\d+/[IVX]+)'
+    match = re.search(pattern, text)
+    return match.group(1) if match else None
+
+
+def _deduplicate_proposals_across_lists(extracted_pairs, unpaired_hyperlinks):
+    """
+    Deduplicates proposals across both extracted_pairs and unpaired_hyperlinks lists.
+    When duplicates exist, keeps only items with approval_text.
+    If all duplicates have approval_text or none have it, keeps all duplicates.
+    
+    Args:
+        extracted_pairs: List of extracted pair dictionaries
+        unpaired_hyperlinks: List of unpaired hyperlink dictionaries
+    
+    Returns:
+        tuple: (deduplicated_extracted_pairs, deduplicated_unpaired_hyperlinks)
+    """
+    # First, collect all proposal numbers and their sources
+    all_proposal_items = []
+    
+    # Add extracted pairs
+    for item in extracted_pairs:
+        proposal_numbers = set()
+        for hyperlink in item['hyperlinks']:
+            prop_num = _extract_proposal_number(hyperlink['text'])
+            if prop_num:
+                proposal_numbers.add(prop_num)
+        
+        for prop_num in proposal_numbers:
+            all_proposal_items.append({
+                'proposal_number': prop_num,
+                'item': item,
+                'source': 'extracted_pairs',
+                'has_approval': bool(item.get('approval_text'))
+            })
+    
+    # Add unpaired hyperlinks
+    for item in unpaired_hyperlinks:
+        prop_num = _extract_proposal_number(item['hyperlink_text'])
+        if prop_num:
+            all_proposal_items.append({
+                'proposal_number': prop_num,
+                'item': item,
+                'source': 'unpaired_hyperlinks',
+                'has_approval': bool(item.get('approval_text'))
+            })
+    
+    # Group by proposal number
+    proposal_groups = {}
+    for prop_item in all_proposal_items:
+        prop_num = prop_item['proposal_number']
+        if prop_num not in proposal_groups:
+            proposal_groups[prop_num] = []
+        proposal_groups[prop_num].append(prop_item)
+    
+    # Determine which items to keep
+    items_to_keep = set()  # Use set to store (id, source) tuples
+    
+    for prop_num, group_items in proposal_groups.items():
+        if len(group_items) == 1:
+            # No duplicates, keep as-is
+            item = group_items[0]['item']
+            items_to_keep.add((id(item), group_items[0]['source']))
+        else:
+            # Handle duplicates
+            items_with_approval = [gi for gi in group_items if gi['has_approval']]
+            items_without_approval = [gi for gi in group_items if not gi['has_approval']]
+            
+            if items_with_approval:
+                # Keep only items with approval text
+                for gi in items_with_approval:
+                    items_to_keep.add((id(gi['item']), gi['source']))
+                print(f"Deduplicated proposal {prop_num}: kept {len(items_with_approval)} items with approval text, "
+                      f"removed {len(items_without_approval)} items without approval text")
+            else:
+                # All items lack approval text, keep all
+                for gi in group_items:
+                    items_to_keep.add((id(gi['item']), gi['source']))
+                print(f"Proposal {prop_num} has {len(group_items)} duplicates but none have approval text - keeping all")
+    
+    # Filter the original lists
+    deduplicated_extracted_pairs = [item for item in extracted_pairs if (id(item), 'extracted_pairs') in items_to_keep]
+    deduplicated_unpaired_hyperlinks = [item for item in unpaired_hyperlinks if (id(item), 'unpaired_hyperlinks') in items_to_keep]
+    
+    # Add items without proposal numbers back
+    for item in extracted_pairs:
+        has_proposal = False
+        for hyperlink in item['hyperlinks']:
+            if _extract_proposal_number(hyperlink['text']):
+                has_proposal = True
+                break
+        if not has_proposal and item not in deduplicated_extracted_pairs:
+            deduplicated_extracted_pairs.append(item)
+    
+    for item in unpaired_hyperlinks:
+        if not _extract_proposal_number(item['hyperlink_text']) and item not in deduplicated_unpaired_hyperlinks:
+            deduplicated_unpaired_hyperlinks.append(item)
+    
+    return deduplicated_extracted_pairs, deduplicated_unpaired_hyperlinks
 
 def generate_session_pdf_filename(session_pdf_url, session_year_param):
     """Generate a safe, descriptive filename for session PDFs."""
@@ -402,3 +518,76 @@ def generate_session_pdf_filename(session_pdf_url, session_year_param):
             f"Error generating session PDF filename for {session_pdf_url}: {e}. Using fallback.")
         url_hash = hashlib.md5(session_pdf_url.encode()).hexdigest()[:10]
         return f"session_{session_year_param}_{url_hash}_fallback.pdf"
+
+
+
+import os
+import glob
+
+def validate_hyperlink_extraction():
+    """
+    Validates the extract_hyperlink_table_data function by testing it on all PDFs
+    in the data/session_pdfs/ directory.
+    """
+    # Define the path to session PDFs
+    pdf_directory = "data/session_pdfs"
+    pdf_pattern = os.path.join(pdf_directory, "*.pdf")
+    
+    # Get all PDF files
+    pdf_files = glob.glob(pdf_pattern)
+    
+    if not pdf_files:
+        print(f"No PDF files found in {pdf_directory}")
+        return
+    
+    print(f"Found {len(pdf_files)} PDF files to validate")
+    print("=" * 80)
+    
+    for i, pdf_path in enumerate(pdf_files, 1):
+        pdf_filename = os.path.basename(pdf_path)
+        print(f"\n[{i}/{len(pdf_files)}] Processing: {pdf_filename}")
+        print("-" * 60)
+        
+        try:
+            # Extract hyperlinks and table data
+            extracted_pairs, unpaired_hyperlinks = extract_hyperlink_table_data(pdf_path)
+            
+            # Display results
+            print(f"✓ Extraction successful")
+            print(f"  • Hyperlink-table pairs found: {len(extracted_pairs)}")
+            print(f"  • Unpaired hyperlinks found: {len(unpaired_hyperlinks)}")
+            
+            # Show details of extracted pairs
+            if extracted_pairs:
+                print("\n  Hyperlink-Table Pairs:")
+                for j, pair in enumerate(extracted_pairs):
+                    print(f"    [{j+1}] Page {pair['page_num']}: {len(pair['hyperlinks'])} hyperlinks, "
+                          f"table shape: {pair['table_data'].shape}")
+                    print(f"        Approval text: {pair.get('approval_text', 'None')}")
+                    for k, hyperlink in enumerate(pair['hyperlinks']):
+                        truncated_text = hyperlink['text'][:50] + "..." if len(hyperlink['text']) > 50 else hyperlink['text']
+                        print(f"        Link {k+1}: {truncated_text}")
+            
+            # Show details of unpaired hyperlinks
+            if unpaired_hyperlinks:
+                print("\n  Unpaired Hyperlinks:")
+                for j, link in enumerate(unpaired_hyperlinks):
+                    truncated_text = link['hyperlink_text'][:50] + "..." if len(link['hyperlink_text']) > 50 else link['hyperlink_text']
+                    approval = link.get('approval_text', 'None')
+                    print(f"    [{j+1}] Page {link['page_num']}: {truncated_text}")
+                    print(f"        Approval text: {approval}")
+            
+            if not extracted_pairs and not unpaired_hyperlinks:
+                print("  ⚠️  No hyperlinks or tables found in this PDF")
+                
+        except Exception as e:
+            print(f"❌ Error processing {pdf_filename}: {str(e)}")
+            print(f"   Error type: {type(e).__name__}")
+        
+        # Add a breakpoint here for debugging individual files
+        print("\n" + "="*80)
+        # Uncomment the line below if you want to pause after each file
+        # input("Press Enter to continue to next PDF...")
+
+if __name__ == "__main__":
+    validate_hyperlink_extraction()
