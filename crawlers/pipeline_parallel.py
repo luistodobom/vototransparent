@@ -314,6 +314,10 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
         session_year = session_info.get('year')
         session_date = session_info.get('date')
 
+        if "XVI_1_95_2025-03-05_ResultadoVotacoes_2025-03-05" in current_session_pdf_url:
+            print(f"🔍 DEBUGGING: Processing target session PDF: {current_session_pdf_url}")
+            # Set your breakpoint on the next line
+
         if not session_year:
             try:
                 parsed_q = parse_qs(urlparse(current_session_pdf_url).query)
@@ -488,6 +492,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     df_obj.drop(indices_to_drop, inplace=True)
                     df_obj.reset_index(drop=True, inplace=True)
 
+            print("This is the LLM Call for session PDF parsing.")
             proposals_from_llm, llm_error = extract_votes_from_session_pdf(
                 actual_session_pdf_disk_path, session_date)
 

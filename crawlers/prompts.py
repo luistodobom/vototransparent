@@ -416,8 +416,8 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
     for attempt in range(LLM_RETRY_ATTEMPTS):
         try:
             response = genai_client.models.generate_content(
-                # model="gemini-2.5-flash-preview-05-20",
-                model='gemini-2.5-pro-preview-06-05',
+                model="gemini-2.5-flash-preview-05-20",
+                # model='gemini-2.5-pro-preview-06-05',
                 contents=contents,
                 config=config if config else None
             )

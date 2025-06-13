@@ -140,6 +140,8 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
     on the same page and after any previously processed table or its associated hyperlinks.
     Includes 'approval_text' (e.g., "Aprovado", "Rejeitado") found after tables or unpaired links.
     
+    One approval text can apply to multiple proposals that come before it in sequence.
+    
     Deduplicates proposals where the same proposal number appears multiple times,
     keeping only versions with approval text when duplicates exist.
 
@@ -258,7 +260,7 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
             })
         page_tables_data.sort(key=lambda t: t['top'])
 
-        # Correlate hyperlinks and tables, then assign approval text
+        # Correlate hyperlinks and tables first
         hyperlink_cursor = 0
         temp_unpaired_links_on_page = []
 
@@ -283,44 +285,23 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                     break # Hyperlink is below or overlapping the table start
 
             if links_for_current_table:
-                # Find approval text for this table group
-                approval_text_for_table = None
-                min_diff_y = float('inf')
-                assigned_approval_idx = -1
-                for ap_idx, ap_line in enumerate(page_approval_lines):
-                    if not ap_line['used'] and ap_line['y0'] > table_bottom_y:
-                        diff = ap_line['y0'] - table_bottom_y
-                        if diff < min_diff_y:
-                            min_diff_y = diff
-                            approval_text_for_table = ap_line['text']
-                            assigned_approval_idx = ap_idx
-                        # Optimization: if sorted, first one might be good enough if not too far
-                        # For now, find closest
-                
-                if assigned_approval_idx != -1:
-                    page_approval_lines[assigned_approval_idx]['used'] = True
-
                 extracted_pairs.append({
                     'hyperlinks': links_for_current_table,
                     'table_data': table['dataframe'],
                     'page_num': current_page_1idx,
                     'table_bottom_y': table_bottom_y,
-                    'approval_text': approval_text_for_table
+                    'approval_text': None  # Will be assigned later
                 })
-            else: # No hyperlinks above this table, process any preceding hyperlinks as unpaired
+            else: # No hyperlinks above this table
                 for i in range(start_hyperlink_cursor_for_table, hyperlink_cursor):
-                    # These were considered but not part of a group if links_for_current_table is empty
-                    # This case needs careful handling, usually links_for_current_table won't be empty if hyperlink_cursor advanced
-                    # For safety, add them to temp_unpaired_links_on_page
                     h = page_hyperlinks[i]
                     temp_unpaired_links_on_page.append({
                         'hyperlink_text': h['text'],
                         'uri': h['uri'],
                         'page_num': current_page_1idx,
                         'rect_y1': h['rect'][3], # bottom y of hyperlink rect
-                        'approval_text': None # Will be assigned below
+                        'approval_text': None # Will be assigned later
                     })
-
 
         # Add remaining hyperlinks (those after all tables or if no tables) to temp_unpaired_links_on_page
         for i in range(hyperlink_cursor, len(page_hyperlinks)):
@@ -330,31 +311,66 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                 'uri': hyperlink['uri'],
                 'page_num': current_page_1idx,
                 'rect_y1': hyperlink['rect'][3],
-                'approval_text': None # Will be assigned below
+                'approval_text': None # Will be assigned later
             })
         
-        # Assign approval text to unpaired links on this page
-        temp_unpaired_links_on_page.sort(key=lambda x: x['rect_y1']) # Sort by their bottom position
-
+        # Now assign approval text to both extracted pairs and unpaired links on this page
+        # Create a combined list of all content items with their positions for approval assignment
+        all_content_items = []
+        
+        # Add extracted pairs
+        for pair in extracted_pairs:
+            if pair['page_num'] == current_page_1idx:
+                all_content_items.append({
+                    'type': 'extracted_pair',
+                    'item': pair,
+                    'bottom_y': pair['table_bottom_y']
+                })
+        
+        # Add unpaired links
         for unpaired_link in temp_unpaired_links_on_page:
-            hyperlink_bottom_y = unpaired_link['rect_y1']
-            approval_text_for_link = None
-            min_diff_y = float('inf')
-            assigned_approval_idx = -1
+            all_content_items.append({
+                'type': 'unpaired_link',
+                'item': unpaired_link,
+                'bottom_y': unpaired_link['rect_y1']
+            })
+        
+        # Sort all content by bottom position
+        all_content_items.sort(key=lambda x: x['bottom_y'])
+        
+        # Assign approval text using a more sophisticated approach
+        # Each approval text applies to all preceding content items since the last approval text
+        content_cursor = 0
+        
+        for approval_line in page_approval_lines:
+            approval_y = approval_line['y0']
+            approval_text = approval_line['text']
+            
+            # Find all content items that come before this approval text
+            items_for_this_approval = []
+            
+            # Start from content_cursor and find items that should get this approval
+            while content_cursor < len(all_content_items):
+                content_item = all_content_items[content_cursor]
+                
+                # If this content item is above the approval text, it gets the approval
+                if content_item['bottom_y'] < approval_y:
+                    items_for_this_approval.append(content_item)
+                    content_cursor += 1
+                else:
+                    # This content item is below the approval, stop here
+                    break
+            
+            # Assign approval text to all items found
+            for content_item in items_for_this_approval:
+                content_item['item']['approval_text'] = approval_text
+            
+            if items_for_this_approval:
+                # print(f"Assigned approval '{approval_text}' to {len(items_for_this_approval)} items on page {current_page_1idx}")
+                approval_line['used'] = True
 
-            for ap_idx, ap_line in enumerate(page_approval_lines):
-                if not ap_line['used'] and ap_line['y0'] > hyperlink_bottom_y:
-                    diff = ap_line['y0'] - hyperlink_bottom_y
-                    if diff < min_diff_y:
-                        min_diff_y = diff
-                        approval_text_for_link = ap_line['text']
-                        assigned_approval_idx = ap_idx
-            
-            if assigned_approval_idx != -1:
-                page_approval_lines[assigned_approval_idx]['used'] = True
-            
-            unpaired_link['approval_text'] = approval_text_for_link
-            unpaired_hyperlinks_all.append(unpaired_link)
+        # Add unpaired links from this page to the global list
+        unpaired_hyperlinks_all.extend(temp_unpaired_links_on_page)
 
     doc_fitz.close()
     

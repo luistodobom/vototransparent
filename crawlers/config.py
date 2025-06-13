@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 # --- Configuration ---
 
-YEAR = 2022
+YEAR = 2024
 DATAFRAME_PATH = f"data/parliament_data_{YEAR}.csv"
 SESSION_PDF_DIR = "data/session_pdfs"
 PROPOSAL_DOC_DIR = "data/proposal_docs"
@@ -13,7 +13,7 @@ DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_DELAY = 5  # seconds
 PDF_PAGE_PARTITION_SIZE = 13  # Process PDFs in chunks of this many pages
-NUM_THREADS = 1
+NUM_THREADS = 10
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 legislature_data = {
