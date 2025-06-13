@@ -135,6 +135,10 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             proposal_proposing_party_val = str(row.get('proposal_proposing_party', 'N/A'))
             proposal_approval_status_raw = row.get('proposal_approval_status')
 
+            # Skip proposals that don't have a valid proposal_short_title
+            if pd.isna(row.get('proposal_short_title')) or proposal_short_title_val in ['N/A', 'nan', '', 'None']:
+                continue
+
             # Parse proposal_category as list of integers
             proposal_category_raw = row.get('proposal_category', '[]')
             proposal_category_list = []
