@@ -100,8 +100,8 @@ Formato de exemplo de um objeto no array JSON (assumindo dados da XIII Legislatu
 
 def create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text):
 
-    print("---------------------The structured data text is:")
-    print(structured_data_text)
+    # print("---------------------The structured data text is:")
+    # print(structured_data_text)
 
     prompt = f"""Você está analisando um registro de votações parlamentares portuguesas. Eu já extraí dados estruturados de propostas do PDF. Estes dados consistem em:
     1. Grupos de propostas: Cada grupo contém um ou mais hiperlinks (propostas) que *aparentam estar* associados a uma única tabela de votação encontrada após eles na mesma página. Cada grupo também pode ter um 'APPROVAL TEXT' associado, que é uma linha de texto como "Aprovado" ou "Rejeitado" encontrada perto da tabela.
