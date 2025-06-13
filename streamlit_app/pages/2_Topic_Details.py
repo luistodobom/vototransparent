@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 import re
+from ast import literal_eval
 import math # Added
 import matplotlib.pyplot as plt # Added
 from matplotlib.patches import Wedge # Added
@@ -332,78 +333,80 @@ def load_data(csv_path="data/parliament_data.csv"):
                 except (json.JSONDecodeError, ValueError):
                     proposal_category_list = []
 
-            voting_breakdown_json = row.get('voting_details_json')
-            current_proposal_overall_favor = 0
-            current_proposal_overall_against = 0
-            current_proposal_overall_abstention = 0
-            proposal_party_votes_list = []
-            parsed_voting_breakdown = {}
-            valid_breakdown_found = False
+            # Parse proposal_proposing_party as list
+            try:
+                if isinstance(proposal_proposing_party_val, str) and proposal_proposing_party_val.startswith('['):
+                    proposal_proposing_party_list = json.loads(proposal_proposing_party_val.replace("'", '"'))
+                    if isinstance(proposal_proposing_party_list, list) and proposal_proposing_party_list:
+                        proposal_proposing_party_val = proposal_proposing_party_list[0]  # Take first party for display
+                    else:
+                        proposal_proposing_party_val = 'N/A'
+                else:
+                    proposal_proposing_party_val = str(proposal_proposing_party_val)
+            except:
+                proposal_proposing_party_val = 'N/A'
 
-            if pd.notna(voting_breakdown_json) and isinstance(voting_breakdown_json, str) and voting_breakdown_json.strip():
-                try:
-                    parsed_voting_breakdown = json.loads(voting_breakdown_json)
-                    if isinstance(parsed_voting_breakdown, dict) and parsed_voting_breakdown:
-                        valid_breakdown_found = True
-                except json.JSONDecodeError:
-                    parsed_voting_breakdown = {}
-
-            if valid_breakdown_found:
-                for party_name, party_votes_data in parsed_voting_breakdown.items():
-                    if isinstance(party_votes_data, dict):
-                        raw_favor_val = party_votes_data.get('Favor', party_votes_data.get('votes_favor', 0))
-                        favor_numeric = pd.to_numeric(raw_favor_val, errors='coerce')
-                        favor = 0 if pd.isna(favor_numeric) else int(favor_numeric)
-
-                        raw_against_val = party_votes_data.get('Contra', party_votes_data.get('votes_against', 0))
-                        against_numeric = pd.to_numeric(raw_against_val, errors='coerce')
-                        against = 0 if pd.isna(against_numeric) else int(against_numeric)
-
-                        raw_abstention_val = party_votes_data.get('Abstenção', party_votes_data.get('Abstencao', party_votes_data.get('votes_abstention', 0)))
-                        abstention_numeric = pd.to_numeric(raw_abstention_val, errors='coerce')
-                        abstention = 0 if pd.isna(abstention_numeric) else int(abstention_numeric)
-                        
-                        raw_not_voted_val = party_votes_data.get('Não Votaram', party_votes_data.get('Nao Votaram', 0))
-                        not_voted_numeric = pd.to_numeric(raw_not_voted_val, errors='coerce')
-                        not_voted = 0 if pd.isna(not_voted_numeric) else int(not_voted_numeric)
-
-                        current_proposal_overall_favor += favor
-                        current_proposal_overall_against += against
-                        current_proposal_overall_abstention += abstention
-                        proposal_party_votes_list.append({
-                            'party': party_name, 'votes_favor': favor, 'votes_against': against,
-                            'votes_abstention': abstention, 'votes_not_voted': not_voted,
-                        })
+            # Extract parties and votes information from voting_details_json
+            voting_details_raw = row.get('voting_details_json', '')
+            if pd.isna(voting_details_raw) or voting_details_raw == '':
+                continue  # Skip rows with no voting info
             
-            # Determine overall vote outcome and unanimity for the proposal
-            is_unanimous_bool = False # Reset for each proposal
-            if proposal_party_votes_list:
-                if current_proposal_overall_favor > 0 and current_proposal_overall_against == 0 and current_proposal_overall_abstention == 0:
-                    is_unanimous_bool = True
-                elif current_proposal_overall_against > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_abstention == 0:
-                    is_unanimous_bool = True
-                elif current_proposal_overall_abstention > 0 and current_proposal_overall_favor == 0 and current_proposal_overall_against == 0:
-                    all_abstained = all(p_vote['votes_favor'] == 0 and p_vote['votes_against'] == 0 for p_vote in proposal_party_votes_list)
-                    if all_abstained: 
-                        is_unanimous_bool = True
+            try:
+                voting_details = json.loads(voting_details_raw)
+            except (ValueError, json.JSONDecodeError):
+                continue  # Skip rows with malformed voting info
+
+            if not isinstance(voting_details, list):
+                continue
+
+            # Determine overall vote outcome
+            total_favor = sum(party.get('votes', {}).get('Favor', 0) for party in voting_details)
+            total_contra = sum(party.get('votes', {}).get('Contra', 0) for party in voting_details)
             
-            # New logic for vote_outcome_str based on proposal_approval_status
-            vote_outcome_str = "Resultado Desconhecido" # Default
+            overall_outcome = "Resultado Desconhecido"
             if pd.notna(proposal_approval_status_raw):
                 try:
                     status_as_int = int(proposal_approval_status_raw)
                     if status_as_int == 1:
-                        vote_outcome_str = "Aprovado"
+                        overall_outcome = "Aprovado"
                     elif status_as_int == 0:
-                        vote_outcome_str = "Rejeitado"
+                        overall_outcome = "Rejeitado"
                 except ValueError:
-                    pass # Remains "Resultado Desconhecido"
-            
+                    pass
+
+            total_active_votes = total_favor + total_contra
+            is_unanimous_bool = total_active_votes > 0 and (total_favor == total_active_votes or total_contra == total_active_votes)
+
+            # Store party votes for this proposal
+            proposal_party_votes_list = []
+            for party_vote_info in voting_details:
+                if not isinstance(party_vote_info, dict):
+                    continue
+                
+                party_name = party_vote_info.get('party_name', 'N/A')
+                votes_data = party_vote_info.get('votes', {})
+                
+                votes_favor = votes_data.get('Favor', 0)
+                votes_against = votes_data.get('Contra', 0)
+                votes_abstention = votes_data.get('Abstenção', 0)
+                votes_not_voted = votes_data.get('Não Votaram', 0)
+                
+                # Skip party if no data
+                if all(v == 0 for v in [votes_favor, votes_against, votes_abstention, votes_not_voted]):
+                    continue
+
+                proposal_party_votes_list.append({
+                    'party': party_name,
+                    'votes_favor': votes_favor,
+                    'votes_against': votes_against,
+                    'votes_abstention': votes_abstention,
+                    'votes_not_voted': votes_not_voted,
+                })
             if proposal_party_votes_list:
                 for p_vote in proposal_party_votes_list:
                     all_vote_details.append({
                         'issue_identifier': issue_id_str, 'full_title': title, 'description': description_text,
-                        'hyperlink': hyperlink_url, 'vote_outcome': vote_outcome_str, 'is_unanimous': is_unanimous_bool,
+                        'hyperlink': hyperlink_url, 'vote_outcome': overall_outcome, 'is_unanimous': is_unanimous_bool,
                         'issue_type': issue_type, 'party': p_vote['party'],
                         'votes_favor': p_vote['votes_favor'], 'votes_against': p_vote['votes_against'],
                         'votes_abstention': p_vote['votes_abstention'], 'votes_not_voted': p_vote['votes_not_voted'],
@@ -421,7 +424,7 @@ def load_data(csv_path="data/parliament_data.csv"):
             else:
                 all_vote_details.append({
                     'issue_identifier': issue_id_str, 'full_title': title, 'description': description_text,
-                    'hyperlink': hyperlink_url, 'vote_outcome': vote_outcome_str, 'is_unanimous': is_unanimous_bool,
+                    'hyperlink': hyperlink_url, 'vote_outcome': overall_outcome, 'is_unanimous': is_unanimous_bool,
                     'issue_type': issue_type, 'party': 'N/A',
                     'votes_favor': 0, 'votes_against': 0, 'votes_abstention': 0, 'votes_not_voted': 0,
                     'authors_json_str': authors_json_str,
