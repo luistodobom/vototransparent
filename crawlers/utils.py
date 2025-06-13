@@ -22,12 +22,13 @@ def init_directories():
     print(f"Ensured directories exist: {SESSION_PDF_DIR}, {PROPOSAL_DOC_DIR}")
 
 
-def load_or_initialize_dataframe():
+def load_or_initialize_dataframe(dataframe_path=None):
     """Loads the DataFrame from CSV if it exists, otherwise initializes an empty one."""
-    if os.path.exists(DATAFRAME_PATH):
-        print(f"Loading existing DataFrame from {DATAFRAME_PATH}")
+    df_path = dataframe_path if dataframe_path else DATAFRAME_PATH
+    if os.path.exists(df_path):
+        print(f"Loading existing DataFrame from {df_path}")
         try:
-            df = pd.read_csv(DATAFRAME_PATH)
+            df = pd.read_csv(df_path)
         except pd.errors.EmptyDataError:
             print(
                 f"Warning: {DATAFRAME_PATH} is empty. Initializing a new DataFrame.")
@@ -66,11 +67,12 @@ def get_dataframe_columns():
     ]
 
 
-def save_dataframe(df):
+def save_dataframe(df, dataframe_path=None):
     """Saves the DataFrame to CSV."""
     try:
-        df.to_csv(DATAFRAME_PATH, index=False)
-        print(f"DataFrame saved to {DATAFRAME_PATH}")
+        df_path = dataframe_path if dataframe_path else DATAFRAME_PATH
+        df.to_csv(df_path, index=False)
+        print(f"DataFrame saved to {df_path}")
     except Exception as e:
         print(f"Error saving DataFrame: {e}")
 

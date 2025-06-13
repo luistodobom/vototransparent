@@ -204,13 +204,13 @@ def summarize_proposal_text(proposal_document_path):
 # --- Main Pipeline Orchestrator ---
 
 
-def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
+def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, dataframe_path=None):
     if not GEMINI_API_KEY:
         print("Critical Error: GEMINI_API_KEY is not set. The pipeline cannot run LLM-dependent stages.")
         return
 
     init_directories()
-    df = load_or_initialize_dataframe()
+    df = load_or_initialize_dataframe(dataframe_path)
     df_lock = Lock()
 
     processed_dates_in_df = set()
@@ -308,7 +308,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
     # Nested function to process a single session
     def _process_single_session(session_info, df_obj, lock_obj, session_pdf_dir, proposal_doc_dir,
                                 pipeline_start_year, last_processed_date_in_csv,
-                                terminal_statuses, columns_func):
+                                terminal_statuses, columns_func, dataframe_path):
 
         current_session_pdf_url = session_info['url']
         session_year = session_info.get('year')
@@ -543,7 +543,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                     if not indices_to_drop.empty:
                         df_obj.drop(indices_to_drop, inplace=True)
                         df_obj.reset_index(drop=True, inplace=True)
-                save_dataframe(df_obj)
+                save_dataframe(df_obj, dataframe_path)
             return  # End processing for this session
 
         if proposals_from_llm is None or (not proposals_from_llm and not run_stage2_llm_parse):
@@ -579,7 +579,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
                                'overall_status'] = 'Completed (No Propostas)'
                     df_obj.loc[summary_idx, 'last_processed_timestamp'] = datetime.now(
                     ).isoformat()
-                save_dataframe(df_obj)
+                save_dataframe(df_obj, dataframe_path)
             print(
                 f"No proposals found or reconstructed for {current_session_pdf_url}.")
             return  # End processing for this session
@@ -814,7 +814,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
 
             df_obj.loc[row_idx,
                        'last_processed_timestamp'] = datetime.now().isoformat()
-            save_dataframe(df_obj)
+            save_dataframe(df_obj, dataframe_path)
         # End of for proposal_data_from_llm in proposals_from_llm
     # End of _process_single_session function
 
@@ -825,7 +825,8 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None):
             s_info, df, df_lock,
             SESSION_PDF_DIR, PROPOSAL_DOC_DIR, _start_year,
             last_date_in_df_for_reprocessing_check, TERMINAL_SUCCESS_STATUSES,
-            get_dataframe_columns  # Pass the function itself
+            get_dataframe_columns,  # Pass the function itself
+            dataframe_path  # Pass the dataframe path
         ))
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
@@ -852,7 +853,7 @@ if __name__ == "__main__":
         '--year', type=int, help="Start year for scraping (default: current year - 5)", default=YEAR)
 
     args = parser.parse_args()
-    YEAR = args.year
-    DATAFRAME_PATH = f"data/parliament_data_{YEAR}.csv"
+    year_to_use = args.year
+    dataframe_path_to_use = f"data/parliament_data_{year_to_use}.csv"
 
-    run_pipeline(start_year=YEAR, end_year=YEAR, max_sessions_to_process=None)
+    run_pipeline(start_year=year_to_use, end_year=year_to_use, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
