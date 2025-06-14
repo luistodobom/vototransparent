@@ -417,7 +417,7 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
     blocks = []
     current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
     
-    for element in all_elements:
+    for i, element in enumerate(all_elements):
         if element['type'] == 'approval':
             # Approval text always ends the current block and creates a new one
             if current_block['hyperlinks'] or current_block['tables']:
@@ -435,13 +435,32 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
             current_block['hyperlinks'].append(element)
         
         elif element['type'] == 'table':
-            # If we already have a table in current block, start a new block (secondary delimiter)
-            if current_block['tables']:
-                # End current block and start new one
-                blocks.append(current_block)
-                current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+            # Check if there are hyperlinks after this table but before the next approval text
+            has_hyperlinks_after_table = False
+            for j in range(i + 1, len(all_elements)):
+                next_elem = all_elements[j]
+                if next_elem['type'] == 'approval':
+                    break
+                elif next_elem['type'] == 'hyperlink':
+                    has_hyperlinks_after_table = True
+                    break
             
-            current_block['tables'].append(element)
+            # If we have hyperlinks after this table, the table serves as a delimiter
+            if has_hyperlinks_after_table and current_block['hyperlinks']:
+                # End current block with hyperlinks before table AND the table itself
+                current_block['tables'].append(element)
+                blocks.append(current_block)
+                # Start new block for hyperlinks that come after the table
+                current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+            else:
+                # Normal case: add table to current block
+                # If we already have a table in current block, start a new block (secondary delimiter)
+                if current_block['tables']:
+                    # End current block and start new one
+                    blocks.append(current_block)
+                    current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+                
+                current_block['tables'].append(element)
     
     # Add final block if it has content
     if current_block['hyperlinks'] or current_block['tables']:
@@ -655,10 +674,12 @@ def validate_hyperlink_extraction():
     # Get all PDF files
     pdf_files = glob.glob(pdf_pattern)
     
-    pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
-    pdf_files = ["data/session_pdfs/2023_XV_2_2_2023-09-19_ResultadoVotacoes_2023-09-19_Moção_Censura_.pdf"]
-    pdf_files = ["data/session_pdfs/XV_1_70_2022-12-22_ResultadoVotacoes_2022-12-22.pdf"]
-    pdf_files = ["data/session_pdfs/2023_XV_2_31_2023-12-19_ResultadoVotacoes_2023-12-19_OD_.pdf"]
+    # pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
+    # pdf_files = ["data/session_pdfs/2023_XV_2_2_2023-09-19_ResultadoVotacoes_2023-09-19_Moção_Censura_.pdf"]
+    # pdf_files = ["data/session_pdfs/XV_1_70_2022-12-22_ResultadoVotacoes_2022-12-22.pdf"]
+    # pdf_files = ["data/session_pdfs/2023_XV_2_31_2023-12-19_ResultadoVotacoes_2023-12-19_OD_.pdf"]
+    # pdf_files = ["data/session_pdfs/2023_XV_1_151_2023-07-07_ResultadoVotacoes_2023-07-07.pdf"]
+    # pdf_files = ["data/session_pdfs/2022_XV_1_63_2022-12-09_ResultadoVotacoes_2022-12-09.pdf"]
         
     
     if not pdf_files:
