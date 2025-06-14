@@ -209,35 +209,28 @@ def extract_text_from_pdf(pdf_path):
 def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
     """
     Extracts groups of hyperlinks and their single associated table from a PDF,
-    optionally for a specific page range.
-    Also returns a list of hyperlinks that did not have a table immediately following them.
-    A table is associated with all hyperlinks that appear directly before it
-    on the same page and after any previously processed table or its associated hyperlinks.
-    Includes 'approval_text' (e.g., "Aprovado", "Rejeitado") found after tables or unpaired links.
+    using approval text as primary delimiters to create blocks of proposals/tables.
     
-    One approval text can apply to multiple proposals that come before it in sequence.
+    Strategy:
+    1. Use approval text (Aprovado/Rejeitado/Prejudicado) as primary delimiters between blocks
+    2. Each block can contain hyperlinks and optionally a table
+    3. If multiple tables exist without approval text between them, tables serve as secondary delimiters
+    4. Hyperlinks in a block are associated with the table in that same block (if any)
     
-    Deduplicates proposals where the same proposal number appears multiple times,
-    keeping only versions with approval text when duplicates exist.
-
     Args:
         pdf_path (str): The path to the PDF file.
         start_page (int, optional): The 1-indexed start page of the range to process. 
-                                    If None, processing starts from the first page.
         end_page (int, optional): The 1-indexed end page of the range to process.
-                                  If None, processing goes up to the last page.
 
     Returns:
         tuple: A tuple containing two lists:
-               - extracted_pairs (list): A list of dictionaries, where each dictionary
-                 contains 'hyperlinks' (a list of hyperlink dicts), 'table_data' (a pandas DataFrame),
-                 'page_num' (1-indexed), 'table_bottom_y' (float), and 'approval_text' (str|None).
-               - unpaired_hyperlinks (list): A list of dictionaries for hyperlinks
-                 that were not associated with any table, including 'hyperlink_text', 
-                 'uri', 'page_num' (1-indexed), 'rect_y1' (float), and 'approval_text' (str|None).
+               - extracted_pairs (list): A list of dictionaries with 'hyperlinks', 'table_data', 
+                 'page_num', 'table_bottom_y', and 'approval_text'.
+               - unpaired_hyperlinks (list): A list of dictionaries for hyperlinks without tables,
+                 including 'hyperlink_text', 'uri', 'page_num', 'rect_y1', and 'approval_text'.
     """
     extracted_pairs = []
-    unpaired_hyperlinks_all = [] # Temp list to hold all unpaired links before final processing
+    unpaired_hyperlinks_all = []
     doc_fitz = fitz.open(pdf_path)
 
     num_doc_pages = len(doc_fitz)
@@ -254,13 +247,15 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
         doc_fitz.close()
         return [], []
 
+    # Collect all elements across all pages first
+    all_elements = []
+    
     for page_num_0idx in range(first_page_to_process_0idx, last_page_to_process_0idx + 1):
         page_fitz = doc_fitz[page_num_0idx]
         current_page_1idx = page_num_0idx + 1
 
-        # Extract potential approval lines from the current page
+        # Extract approval lines - these are our primary delimiters
         approval_keywords = ["aprovad", "rejeitad", "prejudicad"]
-        page_approval_lines = []
         page_text_dict = page_fitz.get_text("dict", sort=True)
         for block in page_text_dict.get("blocks", []):
             if block.get("type") == 0:  # text block
@@ -270,35 +265,36 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                     line_bbox = line["bbox"]  # (x0, y0, x1, y1)
 
                     if any(keyword in full_line_text.lower() for keyword in approval_keywords) and full_line_text:
-                        page_approval_lines.append({
+                        all_elements.append({
+                            'type': 'approval',
                             'text': full_line_text,
-                            'y0': line_bbox[1], # top y-coordinate of the line
-                            'y1': line_bbox[3], # bottom y-coordinate of the line
-                            'used': False # Mark if this line gets associated
+                            'page_num': current_page_1idx,
+                            'y_position': line_bbox[1],  # Use top y-coordinate
+                            'y_bottom': line_bbox[3]
                         })
-        page_approval_lines.sort(key=lambda apl: apl['y0'])
 
-        page_hyperlinks = []
+        # Extract hyperlinks
         links = page_fitz.get_links()
         for link in links:
             if link['kind'] == fitz.LINK_URI:
                 uri = link['uri']
-                if ".pdf" in uri.lower(): # Skip links to other PDFs
+                if ".pdf" in uri.lower():  # Skip links to other PDFs
                     continue
                 rect = link['from']
                 link_text_raw = page_fitz.get_text("text", clip=rect)
                 link_text = ' '.join(link_text_raw.split()) if link_text_raw else "N/A"
 
-
-                page_hyperlinks.append({
+                all_elements.append({
+                    'type': 'hyperlink',
                     'text': link_text,
                     'uri': uri,
-                    'rect': (rect.x0, rect.y0, rect.x1, rect.y1), # (x0, y0, x1, y1)
-                    'page_num_fitz': page_num_0idx
+                    'page_num': current_page_1idx,
+                    'y_position': rect.y0,
+                    'y_bottom': rect.y1,
+                    'rect': (rect.x0, rect.y0, rect.x1, rect.y1)
                 })
-        page_hyperlinks.sort(key=lambda h: h['rect'][1]) # Sort by y0
 
-        page_tables_data = []
+        # Extract tables
         try:
             tables_on_page_json = tabula.read_pdf(pdf_path,
                                                   pages=str(current_page_1idx),
@@ -306,7 +302,7 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                                                   multiple_tables=True,
                                                   lattice=True,
                                                   silent=True)
-            if not tables_on_page_json: # Try stream if lattice fails
+            if not tables_on_page_json:
                 tables_on_page_json = tabula.read_pdf(pdf_path,
                                                       pages=str(current_page_1idx),
                                                       output_format="json",
@@ -325,131 +321,86 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
             if not table_rows_text:
                 continue
             df = pd.DataFrame(table_rows_text)
-            page_tables_data.append({
+            
+            all_elements.append({
+                'type': 'table',
                 'dataframe': df,
-                'top': table_json_data['top'],
-                'left': table_json_data['left'],
-                'bottom': table_json_data['top'] + table_json_data['height'],
-                'right': table_json_data['left'] + table_json_data['width'],
-                'page_num_fitz': page_num_0idx
-            })
-        page_tables_data.sort(key=lambda t: t['top'])
-
-        # Correlate hyperlinks and tables first
-        hyperlink_cursor = 0
-        temp_unpaired_links_on_page = []
-
-        for table_idx in range(len(page_tables_data)):
-            table = page_tables_data[table_idx]
-            table_top_y = table['top']
-            table_bottom_y = table['bottom']
-            
-            # Collect hyperlinks that are above the current table and after the previous table/hyperlinks
-            links_for_current_table = []
-            start_hyperlink_cursor_for_table = hyperlink_cursor
-            while hyperlink_cursor < len(page_hyperlinks):
-                hyperlink = page_hyperlinks[hyperlink_cursor]
-                hyperlink_bottom_y = hyperlink['rect'][3] # y1 of hyperlink
-                if hyperlink_bottom_y < table_top_y:
-                    links_for_current_table.append({
-                        'text': hyperlink['text'],
-                        'uri': hyperlink['uri']
-                    })
-                    hyperlink_cursor += 1
-                else:
-                    break # Hyperlink is below or overlapping the table start
-
-            if links_for_current_table:
-                extracted_pairs.append({
-                    'hyperlinks': links_for_current_table,
-                    'table_data': table['dataframe'],
-                    'page_num': current_page_1idx,
-                    'table_bottom_y': table_bottom_y,
-                    'approval_text': None  # Will be assigned later
-                })
-            else: # No hyperlinks above this table
-                for i in range(start_hyperlink_cursor_for_table, hyperlink_cursor):
-                    h = page_hyperlinks[i]
-                    temp_unpaired_links_on_page.append({
-                        'hyperlink_text': h['text'],
-                        'uri': h['uri'],
-                        'page_num': current_page_1idx,
-                        'rect_y1': h['rect'][3], # bottom y of hyperlink rect
-                        'approval_text': None # Will be assigned later
-                    })
-
-        # Add remaining hyperlinks (those after all tables or if no tables) to temp_unpaired_links_on_page
-        for i in range(hyperlink_cursor, len(page_hyperlinks)):
-            hyperlink = page_hyperlinks[i]
-            temp_unpaired_links_on_page.append({
-                'hyperlink_text': hyperlink['text'],
-                'uri': hyperlink['uri'],
                 'page_num': current_page_1idx,
-                'rect_y1': hyperlink['rect'][3],
-                'approval_text': None # Will be assigned later
+                'y_position': table_json_data['top'],
+                'y_bottom': table_json_data['top'] + table_json_data['height'],
+                'table_data': {
+                    'top': table_json_data['top'],
+                    'left': table_json_data['left'],
+                    'bottom': table_json_data['top'] + table_json_data['height'],
+                    'right': table_json_data['left'] + table_json_data['width']
+                }
             })
-        
-        # Now assign approval text to both extracted pairs and unpaired links on this page
-        # Create a combined list of all content items with their positions for approval assignment
-        all_content_items = []
-        
-        # Add extracted pairs
-        for pair in extracted_pairs:
-            if pair['page_num'] == current_page_1idx:
-                all_content_items.append({
-                    'type': 'extracted_pair',
-                    'item': pair,
-                    'bottom_y': pair['table_bottom_y']
-                })
-        
-        # Add unpaired links
-        for unpaired_link in temp_unpaired_links_on_page:
-            all_content_items.append({
-                'type': 'unpaired_link',
-                'item': unpaired_link,
-                'bottom_y': unpaired_link['rect_y1']
-            })
-        
-        # Sort all content by bottom position
-        all_content_items.sort(key=lambda x: x['bottom_y'])
-        
-        # Assign approval text using a more sophisticated approach
-        # Each approval text applies to all preceding content items since the last approval text
-        content_cursor = 0
-        
-        for approval_line in page_approval_lines:
-            approval_y = approval_line['y0']
-            approval_text = approval_line['text']
-            
-            # Find all content items that come before this approval text
-            items_for_this_approval = []
-            
-            # Start from content_cursor and find items that should get this approval
-            while content_cursor < len(all_content_items):
-                content_item = all_content_items[content_cursor]
-                
-                # If this content item is above the approval text, it gets the approval
-                if content_item['bottom_y'] < approval_y:
-                    items_for_this_approval.append(content_item)
-                    content_cursor += 1
-                else:
-                    # This content item is below the approval, stop here
-                    break
-            
-            # Assign approval text to all items found
-            for content_item in items_for_this_approval:
-                content_item['item']['approval_text'] = approval_text
-            
-            if items_for_this_approval:
-                # print(f"Assigned approval '{approval_text}' to {len(items_for_this_approval)} items on page {current_page_1idx}")
-                approval_line['used'] = True
-
-        # Add unpaired links from this page to the global list
-        unpaired_hyperlinks_all.extend(temp_unpaired_links_on_page)
 
     doc_fitz.close()
     
-    # Deduplicate proposals across both lists - keep ones with approval text when duplicates exist
+    # Sort all elements by page and y-position
+    all_elements.sort(key=lambda x: (x['page_num'], x['y_position']))
+    
+    # Create blocks using approval text as primary delimiters and tables as secondary delimiters
+    blocks = []
+    current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+    
+    for element in all_elements:
+        if element['type'] == 'approval':
+            # Approval text always ends the current block and creates a new one
+            if current_block['hyperlinks'] or current_block['tables']:
+                current_block['approval_text'] = element['text']
+                blocks.append(current_block)
+            else:
+                # If current block is empty, this approval belongs to the previous block
+                if blocks:
+                    blocks[-1]['approval_text'] = element['text']
+            
+            # Start new block after approval text
+            current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+        
+        elif element['type'] == 'hyperlink':
+            current_block['hyperlinks'].append(element)
+        
+        elif element['type'] == 'table':
+            # If we already have a table in current block, start a new block (secondary delimiter)
+            if current_block['tables']:
+                # End current block and start new one
+                blocks.append(current_block)
+                current_block = {'hyperlinks': [], 'tables': [], 'approval_text': None}
+            
+            current_block['tables'].append(element)
+    
+    # Add final block if it has content
+    if current_block['hyperlinks'] or current_block['tables']:
+        blocks.append(current_block)
+    
+    # Process blocks to create final output
+    for block in blocks:
+        hyperlinks_for_output = [{'text': h['text'], 'uri': h['uri']} for h in block['hyperlinks']]
+        
+        if block['tables']:
+            # Block has table(s) - create extracted pairs
+            for table_element in block['tables']:
+                extracted_pairs.append({
+                    'hyperlinks': hyperlinks_for_output,
+                    'table_data': table_element['dataframe'],
+                    'page_num': table_element['page_num'],
+                    'table_bottom_y': table_element['y_bottom'],
+                    'approval_text': block['approval_text']
+                })
+        elif hyperlinks_for_output:
+            # Block has hyperlinks but no table - add to unpaired
+            for hyperlink in block['hyperlinks']:
+                unpaired_hyperlinks_all.append({
+                    'hyperlink_text': hyperlink['text'],
+                    'uri': hyperlink['uri'],
+                    'page_num': hyperlink['page_num'],
+                    'rect_y1': hyperlink['y_bottom'],
+                    'approval_text': block['approval_text']
+                })
+    
+    # Deduplicate proposals across both lists
     extracted_pairs, unpaired_hyperlinks_all = _deduplicate_proposals_across_lists(extracted_pairs, unpaired_hyperlinks_all)
     
     return extracted_pairs, unpaired_hyperlinks_all
@@ -627,6 +578,10 @@ def validate_hyperlink_extraction():
     # Get all PDF files
     pdf_files = glob.glob(pdf_pattern)
     
+    pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
+    pdf_files = ["data/session_pdfs/2017_XIII_2_42_2017-01-25_2017-01-25.pdf"]
+        
+    
     if not pdf_files:
         print(f"No PDF files found in {pdf_directory}")
         return
@@ -658,6 +613,26 @@ def validate_hyperlink_extraction():
                     for k, hyperlink in enumerate(pair['hyperlinks']):
                         truncated_text = hyperlink['text'][:50] + "..." if len(hyperlink['text']) > 50 else hyperlink['text']
                         print(f"        Link {k+1}: {truncated_text}")
+                    
+                    # Print table contents
+                    print(f"        Table contents:")
+                    table_df = pair['table_data']
+                    if not table_df.empty:
+                        print(f"          Table shape: {table_df.shape}")
+                        print(f"          Column headers: {list(table_df.columns)}")
+                        # Print all rows of the table with better formatting
+                        for idx, row in table_df.iterrows():
+                            row_values = []
+                            for cell in row:
+                                cell_str = str(cell) if pd.notna(cell) else "NaN"
+                                if len(cell_str) > 40:
+                                    cell_str = cell_str[:37] + "..."
+                                row_values.append(cell_str)
+                            row_str = " | ".join(row_values)
+                            print(f"          Row {idx}: {row_str}")
+                    else:
+                        print(f"          (Empty table)")
+                    print()
             
             # Show details of unpaired hyperlinks
             if unpaired_hyperlinks:
