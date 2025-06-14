@@ -21,6 +21,7 @@ from config import (
 )
 
 
+
 def http_request_with_retry(url, headers=None, timeout=DOWNLOAD_TIMEOUT, stream=False):
     """
     Makes an HTTP request with exponential backoff retry logic.
@@ -181,6 +182,66 @@ def download_file(url, destination_path, is_pdf=True):
     except IOError as e:
         print(f"Error saving file to {destination_path}: {e}")
         return False, str(e)
+
+
+def _deduplicate_hyperlinks(hyperlinks):
+    """
+    Deduplicates hyperlinks based on URI, keeping the best one according to criteria:
+    1. Keep the one that contains unique proposal identifier (format: ^\d+\/[IVXLCDM]+$)
+    2. If multiple contain identifier, keep the longest string
+    
+    Args:
+        hyperlinks: List of hyperlink dictionaries with 'text' and 'uri' keys
+    
+    Returns:
+        List of deduplicated hyperlinks
+    """
+    import re
+    
+    if not hyperlinks:
+        return hyperlinks
+    
+    # Group hyperlinks by URI
+    uri_groups = {}
+    for hyperlink in hyperlinks:
+        uri = hyperlink['uri']
+        if uri not in uri_groups:
+            uri_groups[uri] = []
+        uri_groups[uri].append(hyperlink)
+    
+    # For each URI group, select the best hyperlink
+    deduplicated = []
+    proposal_id_pattern = r'^\d+\/[IVXLCDM]+$'
+    
+    for uri, group in uri_groups.items():
+        if len(group) == 1:
+            # No duplicates for this URI
+            deduplicated.extend(group)
+        else:
+            # Multiple hyperlinks with same URI - apply selection criteria
+            hyperlinks_with_proposal_id = []
+            hyperlinks_without_proposal_id = []
+            
+            for hyperlink in group:
+                text = hyperlink['text']
+                # Check if text contains proposal identifier
+                if re.search(proposal_id_pattern, text):
+                    hyperlinks_with_proposal_id.append(hyperlink)
+                else:
+                    hyperlinks_without_proposal_id.append(hyperlink)
+            
+            if hyperlinks_with_proposal_id:
+                # Keep the longest one among those with proposal ID
+                best_hyperlink = max(hyperlinks_with_proposal_id, key=lambda h: len(h['text']))
+                deduplicated.append(best_hyperlink)
+                print(f"Deduplicated URI {uri}: kept hyperlink with proposal ID (length {len(best_hyperlink['text'])}): '{best_hyperlink['text'][:50]}...'")
+            else:
+                # No hyperlinks with proposal ID, keep the longest one
+                best_hyperlink = max(hyperlinks_without_proposal_id, key=lambda h: len(h['text']))
+                deduplicated.append(best_hyperlink)
+                print(f"Deduplicated URI {uri}: kept longest hyperlink (length {len(best_hyperlink['text'])}): '{best_hyperlink['text'][:50]}...'")
+    
+    return deduplicated
 
 
 def extract_text_from_pdf(pdf_path):
@@ -383,7 +444,9 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
     
     # Process blocks to create final output
     for block in blocks:
-        hyperlinks_for_output = [{'text': h['text'], 'uri': h['uri']} for h in block['hyperlinks']]
+        # Deduplicate hyperlinks within this block
+        deduplicated_hyperlinks = _deduplicate_hyperlinks(block['hyperlinks'])
+        hyperlinks_for_output = [{'text': h['text'], 'uri': h['uri']} for h in deduplicated_hyperlinks]
         
         if block['tables']:
             # Block has table(s) - create extracted pairs
@@ -397,7 +460,7 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                 })
         elif hyperlinks_for_output:
             # Block has hyperlinks but no table - add to unpaired
-            for hyperlink in block['hyperlinks']:
+            for hyperlink in deduplicated_hyperlinks:
                 unpaired_hyperlinks_all.append({
                     'hyperlink_text': hyperlink['text'],
                     'uri': hyperlink['uri'],
@@ -585,7 +648,8 @@ def validate_hyperlink_extraction():
     pdf_files = glob.glob(pdf_pattern)
     
     pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
-    # pdf_files = ["data/session_pdfs/2017_XIII_2_42_2017-01-25_2017-01-25.pdf"]
+    pdf_files = ["data/session_pdfs/2023_XV_2_2_2023-09-19_ResultadoVotacoes_2023-09-19_Moção_Censura_.pdf"]
+    pdf_files = ["data/session_pdfs/XV_1_70_2022-12-22_ResultadoVotacoes_2022-12-22.pdf"]
         
     
     if not pdf_files:
