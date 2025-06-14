@@ -856,4 +856,4 @@ if __name__ == "__main__":
     year_to_use = args.year
     dataframe_path_to_use = f"data/parliament_data_{year_to_use}.csv"
 
-    run_pipeline(start_year=year_to_use, end_year=year_to_use, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
+    run_pipeline(start_year=year_to_use, end_year=2024, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)

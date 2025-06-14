@@ -12,8 +12,12 @@ PROPOSAL_DOC_DIR = "data/proposal_docs"
 DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_DELAY = 5  # seconds
+HTTP_RETRY_ATTEMPTS = 10  # Maximum retry attempts for HTTP requests
+HTTP_RETRY_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
+HTTP_RETRY_MAX_DELAY = 300  # Maximum delay between retries (5 minutes)
+HTTP_RETRY_MAX_TOTAL_TIME = 3600  # Maximum total time for all retries (1 hour)
 PDF_PAGE_PARTITION_SIZE = 13  # Process PDFs in chunks of this many pages
-NUM_THREADS = 10
+NUM_THREADS = 15
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 legislature_data = {

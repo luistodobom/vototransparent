@@ -21,16 +21,16 @@ class ParliamentPDFScraper:
         })
 
     def get_page_content(self, year=None):
-        try:
-            url = f"{self.base_url}?ano={year}" if year else self.base_url
-            print(
-                f"Fetching session list for year: {year if year else 'current'}")
-            response = self.session.get(url, timeout=DOWNLOAD_TIMEOUT)
-            response.raise_for_status()
-            return response.text
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching page for year {year}: {e}")
+        url = f"{self.base_url}?ano={year}" if year else self.base_url
+        print(f"Fetching session list for year: {year if year else 'current'}")
+        
+        response, error = http_request_with_retry(url, headers=self.session.headers, timeout=DOWNLOAD_TIMEOUT)
+        
+        if error:
+            print(f"Error fetching page for year {year}: {error}")
             return None
+        
+        return response.text
 
     def extract_pdf_links_from_html(self, html_content, year):
         if not html_content:
@@ -141,17 +141,18 @@ def fetch_proposal_details_and_download_doc(proposal_page_url, download_dir):
     scrape_status = 'Pending'
 
     print(f"Fetching proposal details from: {proposal_page_url}")
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(
-            proposal_page_url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
-        response.raise_for_status()
-        html_content = response.text
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL {proposal_page_url}: {e}")
-        return {'authors_json': None, 'document_info': document_info, 'scrape_status': 'Fetch Failed', 'error': str(e)}
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response, error = http_request_with_retry(proposal_page_url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
+    
+    if error:
+        print(f"Error fetching URL {proposal_page_url}: {error}")
+        return {'authors_json': None, 'document_info': document_info, 'scrape_status': 'Fetch Failed', 'error': error}
+    
+    html_content = response.text
 
     soup = BeautifulSoup(html_content, 'lxml')
     base_url = f"{urlparse(proposal_page_url).scheme}://{urlparse(proposal_page_url).netloc}"

@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import pypdf
 import tabula
 import hashlib
@@ -12,8 +13,68 @@ from config import (
     DOWNLOAD_TIMEOUT,
     SESSION_PDF_DIR,
     PROPOSAL_DOC_DIR,
-    DATAFRAME_PATH
+    DATAFRAME_PATH,
+    HTTP_RETRY_ATTEMPTS,
+    HTTP_RETRY_BASE_DELAY,
+    HTTP_RETRY_MAX_DELAY,
+    HTTP_RETRY_MAX_TOTAL_TIME
 )
+
+
+def http_request_with_retry(url, headers=None, timeout=DOWNLOAD_TIMEOUT, stream=False):
+    """
+    Makes an HTTP request with exponential backoff retry logic.
+    
+    Args:
+        url (str): The URL to request
+        headers (dict): HTTP headers to include
+        timeout (int): Request timeout in seconds
+        stream (bool): Whether to stream the response
+        
+    Returns:
+        tuple: (response, error_message) where response is the requests.Response object or None
+    """
+    start_time = time.time()
+    
+    for attempt in range(HTTP_RETRY_ATTEMPTS):
+        try:
+            print(f"Attempting HTTP request to {url} (attempt {attempt + 1}/{HTTP_RETRY_ATTEMPTS})")
+            response = requests.get(url, headers=headers, timeout=timeout, stream=stream)
+            response.raise_for_status()
+            return response, None
+            
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            elapsed_time = time.time() - start_time
+            
+            # Check if we've exceeded the maximum total time
+            if elapsed_time >= HTTP_RETRY_MAX_TOTAL_TIME:
+                print(f"Maximum total retry time ({HTTP_RETRY_MAX_TOTAL_TIME}s) exceeded for {url}")
+                return None, f"Request timed out after {elapsed_time:.1f}s total (max {HTTP_RETRY_MAX_TOTAL_TIME}s): {e}"
+            
+            # Calculate exponential backoff delay
+            delay = min(HTTP_RETRY_BASE_DELAY * (2 ** attempt), HTTP_RETRY_MAX_DELAY)
+            
+            # Check if delay would exceed remaining time budget
+            remaining_time = HTTP_RETRY_MAX_TOTAL_TIME - elapsed_time
+            if delay > remaining_time:
+                delay = max(0, remaining_time - 1)  # Leave 1 second for the actual request
+            
+            print(f"Request failed (attempt {attempt + 1}/{HTTP_RETRY_ATTEMPTS}): {e}")
+            
+            # Don't sleep on the last attempt
+            if attempt + 1 < HTTP_RETRY_ATTEMPTS and delay > 0:
+                print(f"Waiting {delay:.1f}s before retry...")
+                time.sleep(delay)
+            elif attempt + 1 == HTTP_RETRY_ATTEMPTS:
+                return None, f"Request failed after {HTTP_RETRY_ATTEMPTS} attempts: {e}"
+                
+        except requests.exceptions.RequestException as e:
+            # For non-retryable errors (like 404, 403, etc.), don't retry
+            print(f"Non-retryable error for {url}: {e}")
+            return None, f"Request failed with non-retryable error: {e}"
+    
+    return None, f"Request failed after {HTTP_RETRY_ATTEMPTS} attempts"
+
 
 def init_directories():
     """Creates necessary data directories if they don't exist."""
@@ -78,22 +139,25 @@ def save_dataframe(df, dataframe_path=None):
 
 
 def download_file(url, destination_path, is_pdf=True):
-    """Downloads a file from a URL to a destination path."""
+    """Downloads a file from a URL to a destination path with retry logic."""
     print(f"Attempting to download: {url} to {destination_path}")
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response, error = http_request_with_retry(url, headers=headers, timeout=DOWNLOAD_TIMEOUT, stream=True)
+    
+    if error:
+        print(f"Error downloading {url}: {error}")
+        return False, error
+    
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers,
-                                timeout=DOWNLOAD_TIMEOUT, stream=True)
-        response.raise_for_status()
-
         # Check content type for PDFs if expected
         if is_pdf:
             content_type = response.headers.get('Content-Type', '').lower()
             if 'application/pdf' not in content_type:
-                print(
-                    f"Warning: Expected PDF, but got Content-Type: {content_type} for {url}")
+                print(f"Warning: Expected PDF, but got Content-Type: {content_type} for {url}")
                 # Decide if you want to proceed or return failure
                 # For now, we'll try to save it anyway.
 
@@ -102,9 +166,6 @@ def download_file(url, destination_path, is_pdf=True):
                 f.write(chunk)
         print(f"Successfully downloaded {destination_path}")
         return True, destination_path
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading {url}: {e}")
-        return False, str(e)
     except IOError as e:
         print(f"Error saving file to {destination_path}: {e}")
         return False, str(e)
