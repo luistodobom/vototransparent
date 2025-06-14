@@ -633,7 +633,7 @@ if not data_df.empty:
         selected_government_stats_label = st.selectbox(
             "Selecionar Período Governativo:",
             options=list(GOVERNMENT_PERIODS.keys()),
-            index=5,  # Default to "Todos"
+            index=4,  # Default to PSD Government
             key="gov_period_stats_filter"
         )
     # col_gov_empty is intentionally left empty for 1/3 spacing
