@@ -870,9 +870,13 @@ if __name__ == "__main__":
         description="Run the Parliament PDF Scraper Pipeline.")
     parser.add_argument(
         '--year', type=int, help="Start year for scraping (default: current year - 5)", default=YEAR)
+    parser.add_argument(
+        '--year_end', type=int, help="End year for scraping (default: 2020)", default=2020
+    )
 
     args = parser.parse_args()
     year_to_use = args.year
+    year_to_end = args.year_end
     dataframe_path_to_use = f"data/parliament_data_{year_to_use}.csv"
 
-    run_pipeline(start_year=year_to_use, end_year=2020, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
+    run_pipeline(start_year=year_to_use, end_year=year_to_end, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
