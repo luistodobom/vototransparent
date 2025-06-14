@@ -214,28 +214,33 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
     df_lock = Lock()
 
     processed_dates_in_df = set()
-    last_date_in_df_for_reprocessing_check = None
+    dates_to_reprocess = set()  # Last NUM_THREADS dates for multithreaded safety
 
     if not df.empty and 'session_date' in df.columns:
-        processed_dates_in_df = set(df['session_date'].dropna().unique())
-        # Get session_date from the actual last row of the DataFrame
-        if not df['session_date'].dropna().empty:  # Ensure there's at least one non-NA date
-            # Use iloc[-1] to get the last row's session_date
-            # This assumes the DataFrame is loaded in an order where the last row is meaningful,
-            # or it has been sorted by processing time prior to this.
-            # The prompt implies "last row of the CSV date".
-            potential_last_date = df['session_date'].iloc[-1]
-            if pd.notna(potential_last_date):
-                last_date_in_df_for_reprocessing_check = potential_last_date
-
-        print(
-            f"Found {len(processed_dates_in_df)} unique processed session dates in CSV.")
-        if last_date_in_df_for_reprocessing_check:
-            print(
-                f"Session date of the last CSV entry (will be reprocessed if found online): {last_date_in_df_for_reprocessing_check}")
+        all_dates_in_df = df['session_date'].dropna().unique()
+        processed_dates_in_df = set(all_dates_in_df)
+        
+        if len(all_dates_in_df) > 0:
+            # Get the last NUM_THREADS unique dates in the order they appear in the CSV
+            # (which reflects processing completion order, not chronological order)
+            # We need to preserve the order they appear in the DataFrame
+            seen_dates = set()
+            dates_in_file_order = []
+            
+            # Iterate through the DataFrame in reverse order to get the last appearances
+            for date in reversed(df['session_date'].dropna().tolist()):
+                if date not in seen_dates:
+                    dates_in_file_order.append(date)
+                    seen_dates.add(date)
+                    if len(dates_in_file_order) >= NUM_THREADS:
+                        break
+            
+            dates_to_reprocess = set(str(date) for date in dates_in_file_order)
+            
+            print(f"Found {len(processed_dates_in_df)} unique processed session dates in CSV.")
+            print(f"Will reprocess last {len(dates_to_reprocess)} unique dates from end of CSV for multithreaded safety: {sorted(dates_to_reprocess)}")
         else:
-            print(
-                "No valid session date found in the last CSV entry, or CSV is effectively empty of dates.")
+            print("No valid session dates found in CSV.")
 
     scraper = ParliamentPDFScraper()
     current_year = datetime.now().year
@@ -259,42 +264,36 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
     sessions_to_process_infos = []
     if not df.empty and 'session_date' in df.columns and processed_dates_in_df:
         for info in all_session_pdf_infos_from_web:
-            current_web_session_date = info.get(
-                'date')  # Expected 'YYYY-MM-DD'
+            current_web_session_date = info.get('date')  # Expected 'YYYY-MM-DD'
 
             if pd.isna(current_web_session_date):
                 # If date from web is missing, process it to be safe or log error
-                print(
-                    f"Warning: Session info from web has no date: {info['url']}. Adding for processing.")
+                print(f"Warning: Session info from web has no date: {info['url']}. Adding for processing.")
                 sessions_to_process_infos.append(info)
                 continue
 
             if current_web_session_date in processed_dates_in_df:
-                if current_web_session_date == last_date_in_df_for_reprocessing_check:
-                    # This date matches the last entry's date in CSV, mark for re-processing.
-                    print(
-                        f"Session date {current_web_session_date} matches last CSV entry date. Adding for re-processing.")
+                if current_web_session_date in dates_to_reprocess:
+                    # This date is in the last NUM_THREADS dates, mark for re-processing.
+                    print(f"Session date {current_web_session_date} is in last {NUM_THREADS} dates. Adding for re-processing.")
                     sessions_to_process_infos.append(info)
                 else:
-                    # This date is in CSV and is not the last entry's date, so skip.
+                    # This date is in CSV but not in the last NUM_THREADS dates, so skip.
                     # print(f"Skipping already processed session date: {current_web_session_date}")
                     pass
             else:
                 # This date is not in CSV, so process.
                 sessions_to_process_infos.append(info)
-        print(
-            f"Filtered to {len(sessions_to_process_infos)} sessions after considering processed dates.")
+        print(f"Filtered to {len(sessions_to_process_infos)} sessions after considering processed dates.")
     else:  # DataFrame is empty or has no session_date column or no processed dates
         sessions_to_process_infos = all_session_pdf_infos_from_web
         print("Processing all sessions found from web (CSV empty or no relevant dates).")
 
-    # Sort sessions: prioritize reprocessing the last known date, then by date.
-    if last_date_in_df_for_reprocessing_check:
-        sessions_to_process_infos.sort(key=lambda x: (str(x.get('date', '1900-01-01')) != str(
-            last_date_in_df_for_reprocessing_check), str(x.get('date', '1900-01-01')), x['url']))
+    # Sort sessions: prioritize reprocessing dates from dates_to_reprocess, then by date.
+    if dates_to_reprocess:
+        sessions_to_process_infos.sort(key=lambda x: (str(x.get('date', '1900-01-01')) not in dates_to_reprocess, str(x.get('date', '1900-01-01')), x['url']))
     else:
-        sessions_to_process_infos.sort(key=lambda x: (
-            str(x.get('date', '1900-01-01')), x['url']))
+        sessions_to_process_infos.sort(key=lambda x: (str(x.get('date', '1900-01-01')), x['url']))
 
     print(
         f"Total sessions to iterate through after filtering and sorting: {len(sessions_to_process_infos)}")
@@ -307,7 +306,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
 
     # Nested function to process a single session
     def _process_single_session(session_info, df_obj, lock_obj, session_pdf_dir, proposal_doc_dir,
-                                pipeline_start_year, last_processed_date_in_csv,
+                                pipeline_start_year, dates_to_reprocess_set,
                                 terminal_statuses, columns_func, dataframe_path):
 
         current_session_pdf_url = session_info['url']
@@ -658,16 +657,16 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
                     is_terminal_status_for_stage3 = current_scrape_status in [
                         'Success', 'Success (No Doc Link)', 'No Gov Link', 'Fetch Failed']
 
-                rerun_if_part_of_last_reprocessed_date = False
-                # Compare current session's date
-                if str(session_date) == str(last_processed_date_in_csv):
+                rerun_if_part_of_reprocessed_dates = False
+                # Check if current session's date is in dates being reprocessed
+                if str(session_date) in dates_to_reprocess_set:
                     is_perfect_stage3_success = False
                     if not scrape_status_is_na and current_scrape_status in ['Success', 'Success (No Doc Link)']:
                         is_perfect_stage3_success = True
                     if not is_perfect_stage3_success:
-                        rerun_if_part_of_last_reprocessed_date = True
+                        rerun_if_part_of_reprocessed_dates = True
 
-                if scrape_status_is_na or not is_terminal_status_for_stage3 or rerun_if_part_of_last_reprocessed_date:
+                if scrape_status_is_na or not is_terminal_status_for_stage3 or rerun_if_part_of_reprocessed_dates:
                     needs_stage3_run = True
             else:
                 current_overall_status_for_else = df_obj.loc[row_idx,
@@ -728,15 +727,15 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
                 current_summary_status_s4 = df_obj.loc[row_idx,
                                                        'proposal_summarize_status']
 
-                force_rerun_summary_for_last_date = False
-                # Compare current session's date
-                if str(session_date) == str(last_processed_date_in_csv):
+                force_rerun_summary_for_reprocessed_dates = False
+                # Check if current session's date is in dates being reprocessed
+                if str(session_date) in dates_to_reprocess_set:
                     if pd.isna(current_summary_status_s4) or (pd.notna(current_summary_status_s4) and current_summary_status_s4 != 'Success'):
-                        force_rerun_summary_for_last_date = True
+                        force_rerun_summary_for_reprocessed_dates = True
 
                 if pd.isna(current_summary_status_s4) or \
                    (pd.notna(current_summary_status_s4) and current_summary_status_s4 != 'Success') or \
-                   force_rerun_summary_for_last_date:
+                   force_rerun_summary_for_reprocessed_dates:
                     needs_stage4_run = True
 
             if needs_stage4_run:
@@ -824,7 +823,7 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
         starmap_args.append((
             s_info, df, df_lock,
             SESSION_PDF_DIR, PROPOSAL_DOC_DIR, _start_year,
-            last_date_in_df_for_reprocessing_check, TERMINAL_SUCCESS_STATUSES,
+            dates_to_reprocess, TERMINAL_SUCCESS_STATUSES,
             get_dataframe_columns,  # Pass the function itself
             dataframe_path  # Pass the dataframe path
         ))
