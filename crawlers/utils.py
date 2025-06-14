@@ -187,7 +187,7 @@ def download_file(url, destination_path, is_pdf=True):
 def _deduplicate_hyperlinks(hyperlinks):
     """
     Deduplicates hyperlinks based on URI, keeping the best one according to criteria:
-    1. Keep the one that contains unique proposal identifier (format: ^\d+\/[IVXLCDM]+$)
+    1. Keep the one that contains unique proposal identifier (format: ^\\d+\\/[IVXLCDM]+$)
     2. If multiple contain identifier, keep the longest string
     
     Args:
@@ -211,7 +211,7 @@ def _deduplicate_hyperlinks(hyperlinks):
     
     # For each URI group, select the best hyperlink
     deduplicated = []
-    proposal_id_pattern = r'^\d+\/[IVXLCDM]+$'
+    proposal_id_pattern = r'\d+\/[IVXLCDM]+'  # Pattern to find proposal IDs within text
     
     for uri, group in uri_groups.items():
         if len(group) == 1:
@@ -326,13 +326,18 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                     line_bbox = line["bbox"]  # (x0, y0, x1, y1)
 
                     if any(keyword in full_line_text.lower() for keyword in approval_keywords) and full_line_text:
-                        all_elements.append({
-                            'type': 'approval',
-                            'text': full_line_text,
-                            'page_num': current_page_1idx,
-                            'y_position': line_bbox[1],  # Use top y-coordinate
-                            'y_bottom': line_bbox[3]
-                        })
+                        # More restrictive approval text detection
+                        # Should be relatively short and primarily approval text
+                        if len(full_line_text) <= 50 and any(
+                            full_line_text.lower().strip().startswith(keyword) for keyword in approval_keywords
+                        ):
+                            all_elements.append({
+                                'type': 'approval',
+                                'text': full_line_text,
+                                'page_num': current_page_1idx,
+                                'y_position': line_bbox[1],  # Use top y-coordinate
+                                'y_bottom': line_bbox[3]
+                            })
 
         # Extract hyperlinks
         links = page_fitz.get_links()
@@ -568,17 +573,20 @@ def _deduplicate_proposals_across_lists(extracted_pairs, unpaired_hyperlinks):
     deduplicated_unpaired_hyperlinks = [item for item in unpaired_hyperlinks if (id(item), 'unpaired_hyperlinks') in items_to_keep]
     
     # Add items without proposal numbers back
+    deduplicated_extracted_pairs_ids = {id(item) for item in deduplicated_extracted_pairs}
+    deduplicated_unpaired_hyperlinks_ids = {id(item) for item in deduplicated_unpaired_hyperlinks}
+    
     for item in extracted_pairs:
         has_proposal = False
         for hyperlink in item['hyperlinks']:
             if _extract_proposal_number(hyperlink['text']):
                 has_proposal = True
                 break
-        if not has_proposal and item not in deduplicated_extracted_pairs:
+        if not has_proposal and id(item) not in deduplicated_extracted_pairs_ids:
             deduplicated_extracted_pairs.append(item)
     
     for item in unpaired_hyperlinks:
-        if not _extract_proposal_number(item['hyperlink_text']) and item not in deduplicated_unpaired_hyperlinks:
+        if not _extract_proposal_number(item['hyperlink_text']) and id(item) not in deduplicated_unpaired_hyperlinks_ids:
             deduplicated_unpaired_hyperlinks.append(item)
     
     return deduplicated_extracted_pairs, deduplicated_unpaired_hyperlinks
@@ -650,6 +658,7 @@ def validate_hyperlink_extraction():
     pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
     pdf_files = ["data/session_pdfs/2023_XV_2_2_2023-09-19_ResultadoVotacoes_2023-09-19_Moção_Censura_.pdf"]
     pdf_files = ["data/session_pdfs/XV_1_70_2022-12-22_ResultadoVotacoes_2022-12-22.pdf"]
+    pdf_files = ["data/session_pdfs/2023_XV_2_31_2023-12-19_ResultadoVotacoes_2023-12-19_OD_.pdf"]
         
     
     if not pdf_files:
