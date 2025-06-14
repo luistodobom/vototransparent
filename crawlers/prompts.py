@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import asyncio
 from datetime import date
 from google import genai
 
@@ -391,8 +392,18 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
 
     print(f"Calling Gemini API. Prompt length: {len(actual_prompt_text)}")
 
+    # Run the async function in a synchronous context
+    try:
+        return asyncio.run(_call_gemini_api_async(actual_prompt_text, document_path, expect_json, actual_response_schema))
+    except Exception as e:
+        print(f"Error in asyncio.run: {e}")
+        return None, f"Error running async function: {e}"
+
+
+async def _call_gemini_api_async(prompt_text, document_path=None, expect_json=False, responseSchema=None):
+    """Async implementation of Gemini API call with timeout."""
     # Prepare contents array
-    contents = [actual_prompt_text]
+    contents = [prompt_text]
 
     # If a document is provided, upload it using the File API
     if document_path and os.path.exists(document_path):
@@ -410,17 +421,25 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
         config = {
             "response_mime_type": "application/json",
             "temperature": 0,
-            "responseSchema": actual_response_schema # Use the potentially corrected schema
+            "responseSchema": responseSchema # Use the potentially corrected schema
         }
 
     for attempt in range(LLM_RETRY_ATTEMPTS):
         try:
-            response = genai_client.models.generate_content(
-                model="gemini-2.5-flash-preview-05-20",
-                # model='gemini-2.5-pro-preview-06-05',
-                contents=contents,
-                config=config if config else None
-            )
+            print(f"Gemini API attempt {attempt + 1}/{LLM_RETRY_ATTEMPTS} with {LLM_TIMEOUT}s timeout")
+            
+            # Create the async task for the API call
+            api_task = asyncio.create_task(_make_gemini_request(contents, config))
+            
+            # Wait for the task with timeout
+            try:
+                response = await asyncio.wait_for(api_task, timeout=LLM_TIMEOUT)
+            except asyncio.TimeoutError:
+                print(f"Gemini API call timed out after {LLM_TIMEOUT} seconds (attempt {attempt + 1}/{LLM_RETRY_ATTEMPTS})")
+                if attempt + 1 == LLM_RETRY_ATTEMPTS:
+                    return None, f"API timeout after {LLM_RETRY_ATTEMPTS} attempts (each {LLM_TIMEOUT}s)"
+                await asyncio.sleep(LLM_RETRY_DELAY)
+                continue
 
             generated_text = response.text
 
@@ -454,8 +473,33 @@ def call_gemini_api(prompt_text, document_path=None, expect_json=False, response
             if attempt + 1 == LLM_RETRY_ATTEMPTS:
                 return None, f"API error after {LLM_RETRY_ATTEMPTS} attempts: {e}"
 
-        time.sleep(LLM_RETRY_DELAY)
+        await asyncio.sleep(LLM_RETRY_DELAY)
     return None, f"Failed after {LLM_RETRY_ATTEMPTS} attempts."
+
+
+async def _make_gemini_request(contents, config):
+    """Makes the actual Gemini API request asynchronously."""
+    # Check if the client has an async method
+    try:
+        # Try using the async method if available
+        response = await genai_client.amodels.generate_content(
+            model="gemini-2.5-flash-preview-05-20",
+            contents=contents,
+            config=config if config else None
+        )
+        return response
+    except AttributeError:
+        # Fall back to sync method wrapped in run_in_executor
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: genai_client.models.generate_content(
+                model="gemini-2.5-flash-preview-05-20",
+                contents=contents,
+                config=config if config else None
+            )
+        )
+        return response
 
 
 def validate_llm_proposals_response(extracted_data):

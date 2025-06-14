@@ -12,6 +12,7 @@ PROPOSAL_DOC_DIR = "data/proposal_docs"
 DOWNLOAD_TIMEOUT = 60  # seconds for requests timeout
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_DELAY = 5  # seconds
+LLM_TIMEOUT = 180  # seconds for Gemini API timeout
 HTTP_RETRY_ATTEMPTS = 10  # Maximum retry attempts for HTTP requests
 HTTP_RETRY_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
 HTTP_RETRY_MAX_DELAY = 300  # Maximum delay between retries (5 minutes)
