@@ -189,6 +189,7 @@ def summarize_proposal_text(proposal_document_path):
             else:
                 return None, f"Missing required field '{field}' in LLM response: {summary_data}"
 
+    # Handle categories field
     if not isinstance(summary_data.get('categories'), list):
         if isinstance(summary_data.get('categories'), int):
             summary_data['categories'] = [summary_data['categories']]
@@ -198,6 +199,18 @@ def summarize_proposal_text(proposal_document_path):
             return None, f"Field 'categories' should be a list, got: {type(summary_data.get('categories'))}"
 
     summary_data['categories'] = json.dumps(summary_data['categories'])
+
+    # Ensure all text fields are strings, not lists
+    text_fields = ['general_summary', 'critical_analysis', 'fiscal_impact', 
+                   'colloquial_summary', 'short_title', 'proposing_party']
+    for field in text_fields:
+        value = summary_data.get(field)
+        if isinstance(value, list):
+            # If it's a list, join it into a string
+            summary_data[field] = ' '.join(str(item) for item in value) if value else None
+        elif value is not None and not isinstance(value, str):
+            # Convert non-string, non-None values to string
+            summary_data[field] = str(value)
 
     return summary_data, None
 
@@ -752,23 +765,30 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
                     df_obj.loc[row_idx,
                                'overall_status'] = 'Failed Stage 4 (LLM Summary)'
                 else:
-                    df_obj.loc[row_idx,
-                               'proposal_summary_general'] = summary_data['general_summary']
-                    df_obj.loc[row_idx,
-                               'proposal_summary_analysis'] = summary_data['critical_analysis']
-                    df_obj.loc[row_idx,
-                               'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
-                    df_obj.loc[row_idx,
-                               'proposal_summary_colloquial'] = summary_data['colloquial_summary']
-                    df_obj.loc[row_idx,
-                               'proposal_category'] = summary_data['categories']
-                    df_obj.loc[row_idx,
-                               'proposal_short_title'] = summary_data['short_title']
-                    df_obj.loc[row_idx,
-                               'proposal_proposing_party'] = summary_data['proposing_party']
-                    df_obj.loc[row_idx,
-                               'proposal_summarize_status'] = 'Success'
-                    df_obj.loc[row_idx, 'overall_status'] = 'Success'
+                    try:
+                        df_obj.loc[row_idx,
+                                   'proposal_summary_general'] = summary_data['general_summary']
+                        df_obj.loc[row_idx,
+                                   'proposal_summary_analysis'] = summary_data['critical_analysis']
+                        df_obj.loc[row_idx,
+                                   'proposal_summary_fiscal_impact'] = summary_data['fiscal_impact']
+                        df_obj.loc[row_idx,
+                                   'proposal_summary_colloquial'] = summary_data['colloquial_summary']
+                        df_obj.loc[row_idx,
+                                   'proposal_category'] = summary_data['categories']
+                        df_obj.loc[row_idx,
+                                   'proposal_short_title'] = summary_data['short_title']
+                        df_obj.loc[row_idx,
+                                   'proposal_proposing_party'] = summary_data['proposing_party']
+                        df_obj.loc[row_idx,
+                                   'proposal_summarize_status'] = 'Success'
+                        df_obj.loc[row_idx, 'overall_status'] = 'Success'
+                    except ValueError as e:
+                        error_msg = f"DataFrame assignment error: {e}. Summary data types: {[(k, type(v)) for k, v in summary_data.items()]}"
+                        print(f"Error in summary data assignment: {error_msg}")
+                        df_obj.loc[row_idx, 'proposal_summarize_status'] = f'Assignment Error: {str(e)}'
+                        df_obj.loc[row_idx, 'last_error_message'] = error_msg
+                        df_obj.loc[row_idx, 'overall_status'] = 'Failed Stage 4 (Data Assignment)'
 
             current_os_final = df_obj.loc[row_idx, 'overall_status']
             is_pending_for_final_update = False
@@ -855,4 +875,4 @@ if __name__ == "__main__":
     year_to_use = args.year
     dataframe_path_to_use = f"data/parliament_data_{year_to_use}.csv"
 
-    run_pipeline(start_year=year_to_use, end_year=2024, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
+    run_pipeline(start_year=year_to_use, end_year=2020, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
