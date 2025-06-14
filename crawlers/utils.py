@@ -322,6 +322,12 @@ def extract_hyperlink_table_data(pdf_path, start_page=None, end_page=None):
                 continue
             df = pd.DataFrame(table_rows_text)
             
+            # Check if this is a title table containing "VOTAÇÕES EFETUADAS EM"
+            table_text = ' '.join([' '.join(row) for row in table_rows_text]).upper()
+            if "VOTAÇÕES EFETUADAS EM" in table_text:
+                print(f"Skipping title table on page {current_page_1idx}: contains 'VOTAÇÕES EFETUADAS EM'")
+                continue
+            
             all_elements.append({
                 'type': 'table',
                 'dataframe': df,
@@ -579,7 +585,7 @@ def validate_hyperlink_extraction():
     pdf_files = glob.glob(pdf_pattern)
     
     pdf_files = ["/Users/luistb/Downloads/XVI_1_67_2024-12-12_ResultadoVotacoes_2024-12-12.pdf"]
-    pdf_files = ["data/session_pdfs/2017_XIII_2_42_2017-01-25_2017-01-25.pdf"]
+    # pdf_files = ["data/session_pdfs/2017_XIII_2_42_2017-01-25_2017-01-25.pdf"]
         
     
     if not pdf_files:
