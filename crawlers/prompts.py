@@ -20,7 +20,7 @@ def create_prompt_for_session_pdf(hyperlink_table_pairs, unpaired_links, session
         hyperlink_table_pairs, unpaired_links, pre_2020)
     mp_counts_text = build_mp_counts_text(session_date)
 
-    if session_date is None or session_date >= date(2020, 1, 1):
+    if session_date is None or session_date >= date(2020, 4, 25):
         return create_prompt_for_session_pdf_post_2020(structured_data_text, mp_counts_text)#, response_schema
     else:
         return create_prompt_for_session_pdf_pre_2020(structured_data_text, mp_counts_text)#, response_schema

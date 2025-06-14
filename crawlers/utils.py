@@ -140,6 +140,15 @@ def save_dataframe(df, dataframe_path=None):
 
 def download_file(url, destination_path, is_pdf=True):
     """Downloads a file from a URL to a destination path with retry logic."""
+    # Check if file already exists
+    if os.path.exists(destination_path):
+        file_size = os.path.getsize(destination_path)
+        if file_size > 0:  # File exists and is not empty
+            print(f"File already exists and is non-empty: {destination_path} ({file_size} bytes)")
+            return True, destination_path
+        else:
+            print(f"File exists but is empty, re-downloading: {destination_path}")
+    
     print(f"Attempting to download: {url} to {destination_path}")
     
     headers = {
@@ -161,6 +170,9 @@ def download_file(url, destination_path, is_pdf=True):
                 # Decide if you want to proceed or return failure
                 # For now, we'll try to save it anyway.
 
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+        
         with open(destination_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
