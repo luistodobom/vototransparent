@@ -10,6 +10,29 @@ import os
 import json
 from ast import literal_eval
 
+# --- Helper Functions ---
+def parse_proposing_party_list(proposing_party_val):
+    """Parse proposal_proposing_party field as a list of parties."""
+    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
+        return []
+    
+    try:
+        # Convert to string first
+        proposing_party_str = str(proposing_party_val)
+        
+        # Check if it's a JSON array string
+        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
+            party_list = json.loads(proposing_party_str.replace("'", '"'))
+            if isinstance(party_list, list):
+                return [str(party).strip() for party in party_list if str(party).strip()]
+        
+        # If it's a simple string, treat as single party
+        return [proposing_party_str.strip()]
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: treat as single party
+        return [str(proposing_party_val).strip()]
+
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="VotoTransparente PT",
@@ -175,18 +198,14 @@ def load_data(csv_path="data/parliament_data.csv"):
                 except (json.JSONDecodeError, ValueError):
                     proposal_category_list = []
 
-            # Parse proposal_proposing_party as list
-            try:
-                if isinstance(proposal_proposing_party_val, str) and proposal_proposing_party_val.startswith('['):
-                    proposal_proposing_party_list = json.loads(proposal_proposing_party_val.replace("'", '"'))
-                    if isinstance(proposal_proposing_party_list, list) and proposal_proposing_party_list:
-                        proposal_proposing_party_val = proposal_proposing_party_list[0]  # Take first party for display
-                    else:
-                        proposal_proposing_party_val = 'N/A'
-                else:
-                    proposal_proposing_party_val = str(proposal_proposing_party_val)
-            except:
-                proposal_proposing_party_val = 'N/A'
+            # Parse proposal_proposing_party using helper function
+            proposal_proposing_party_list = parse_proposing_party_list(proposal_proposing_party_val)
+            
+            # Create display string for proposing party
+            if proposal_proposing_party_list:
+                proposal_proposing_party_display = ', '.join(proposal_proposing_party_list)
+            else:
+                proposal_proposing_party_display = 'N/A'
 
             # Extract parties and votes information from voting_details_json
             voting_details_raw = row.get('voting_details_json', '')
@@ -275,7 +294,8 @@ def load_data(csv_path="data/parliament_data.csv"):
                         'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                         'proposal_short_title': proposal_short_title_val,
-                        'proposal_proposing_party': proposal_proposing_party_val,
+                        'proposal_proposing_party': proposal_proposing_party_display,
+                        'proposal_proposing_party_list': proposal_proposing_party_list,
                         'proposal_approval_status': proposal_approval_status_raw,
                     })
             else:
@@ -292,7 +312,8 @@ def load_data(csv_path="data/parliament_data.csv"):
                     'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                     'proposal_short_title': proposal_short_title_val,
-                    'proposal_proposing_party': proposal_proposing_party_val,
+                    'proposal_proposing_party': proposal_proposing_party_display,
+                    'proposal_proposing_party_list': proposal_proposing_party_list,
                     'proposal_approval_status': proposal_approval_status_raw,
                 })
         
@@ -372,7 +393,6 @@ def normalize_text(text):
     # Remove special characters and convert to lowercase
     text_without_special_chars = re.sub(r'[^a-zA-Z0-9\\s]', '', text_without_accents)
     return text_without_special_chars.lower()
-
 
 # --- Homepage ---
 # Use markdown for custom styled title and subtitle
@@ -534,8 +554,8 @@ if not data_df.empty:
                         with col1:
                             # --- Resumo da Proposta ---
                             proposing_party_text = ""
-                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_proposing_party'] != 'N/A' and str(row['proposal_proposing_party']).lower() != 'nan':
-                                proposing_party_text = row['proposal_proposing_party']
+                            if pd.notna(row.get('proposal_proposing_party')) and row['proposal_propondo_party'] != 'N/A' and str(row['proposal_propondo_party']).lower() != 'nan':
+                                proposing_party_text = row['proposal_propondo_party']
 
                             # Date is not available in this fallback, so only party
                             if proposing_party_text:
@@ -647,16 +667,16 @@ if not data_df.empty:
 
         # Iterate over unique proposals in the period to populate party_proposal_stats
         for _, row in unique_proposals_in_period_df.iterrows(): # Iterate unique proposals
-            proposing_party_str = str(row.get('proposal_proposing_party', ''))
+            proposing_party_list = row.get('proposal_proposing_party_list', [])
             approval_status = row.get('proposal_approval_status')
 
             if approval_status == 1.0:  # Approved
                 for party_name in TARGET_PARTIES:
-                    if party_name in proposing_party_str:
+                    if party_name in proposing_party_list:
                         party_proposal_stats[party_name]['Approved'] += 1
             elif approval_status == 0.0:  # Rejected
                 for party_name in TARGET_PARTIES:
-                    if party_name in proposing_party_str:
+                    if party_name in proposing_party_list:
                         party_proposal_stats[party_name]['Rejected'] += 1
         
         chart_data_list = []

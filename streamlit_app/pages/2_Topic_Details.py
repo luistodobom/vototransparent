@@ -11,6 +11,28 @@ import matplotlib.colors as mcolors # Added
 import matplotlib.patches as mpatches # Added
 import matplotlib.patheffects as path_effects 
 
+# --- Helper Functions ---
+def parse_proposing_party_list(proposing_party_val):
+    """Parse proposal_proposing_party field as a list of parties."""
+    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
+        return []
+    
+    try:
+        # Convert to string first
+        proposing_party_str = str(proposing_party_val)
+        
+        # Check if it's a JSON array string
+        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
+            party_list = json.loads(proposing_party_str.replace("'", '"'))
+            if isinstance(party_list, list):
+                return [str(party).strip() for party in party_list if str(party).strip()]
+        
+        # If it's a simple string, treat as single party
+        return [proposing_party_str.strip()]
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: treat as single party
+        return [str(proposing_party_val).strip()]
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Detalhes da Votação - VotoTransparente PT",
@@ -337,18 +359,14 @@ def load_data(csv_path="data/parliament_data.csv"):
                 except (json.JSONDecodeError, ValueError):
                     proposal_category_list = []
 
-            # Parse proposal_proposing_party as list
-            try:
-                if isinstance(proposal_proposing_party_val, str) and proposal_proposing_party_val.startswith('['):
-                    proposal_proposing_party_list = json.loads(proposal_proposing_party_val.replace("'", '"'))
-                    if isinstance(proposal_proposing_party_list, list) and proposal_proposing_party_list:
-                        proposal_proposing_party_val = proposal_proposing_party_list[0]  # Take first party for display
-                    else:
-                        proposal_proposing_party_val = 'N/A'
-                else:
-                    proposal_proposing_party_val = str(proposal_proposing_party_val)
-            except:
-                proposal_proposing_party_val = 'N/A'
+            # Parse proposal_proposing_party using helper function
+            proposal_proposing_party_list = parse_proposing_party_list(proposal_proposing_party_val)
+            
+            # Create display string for proposing party
+            if proposal_proposing_party_list:
+                proposal_proposing_party_display = ', '.join(proposal_proposing_party_list)
+            else:
+                proposal_proposing_party_display = 'N/A'
 
             # Extract parties and votes information from voting_details_json
             voting_details_raw = row.get('voting_details_json', '')
@@ -419,7 +437,8 @@ def load_data(csv_path="data/parliament_data.csv"):
                         'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                         'proposal_short_title': proposal_short_title_val,
-                        'proposal_proposing_party': proposal_proposing_party_val,
+                        'proposal_proposing_party': proposal_proposing_party_display,
+                        'proposal_proposing_party_list': proposal_proposing_party_list,
                         'proposal_approval_status': proposal_approval_status_raw,
                     })
             else:
@@ -436,7 +455,8 @@ def load_data(csv_path="data/parliament_data.csv"):
                     'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                     'proposal_short_title': proposal_short_title_val,
-                    'proposal_proposing_party': proposal_proposing_party_val,
+                    'proposal_proposing_party': proposal_proposing_party_display,
+                    'proposal_proposing_party_list': proposal_proposing_party_list,
                     'proposal_approval_status': proposal_approval_status_raw,
                 })
         
@@ -454,7 +474,7 @@ def load_data(csv_path="data/parliament_data.csv"):
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
             'session_pdf_url', 'session_date', 'proposal_category_list',
-            'proposal_short_title', 'proposal_proposing_party', 'proposal_approval_status' # Added new columns
+            'proposal_short_title', 'proposal_proposing_party', 'proposal_proposing_party_list', 'proposal_approval_status' # Added new columns
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -462,6 +482,7 @@ def load_data(csv_path="data/parliament_data.csv"):
                 elif col == 'is_unanimous': df[col] = False
                 elif col == 'proposal_short_title': df[col] = 'N/A'
                 elif col == 'proposal_proposing_party': df[col] = 'N/A'
+                elif col == 'proposal_proposing_party_list': df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
                 elif col == 'proposal_approval_status': df[col] = pd.NA
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
@@ -490,6 +511,28 @@ def load_data(csv_path="data/parliament_data.csv"):
 
 
 data_df = load_data() 
+
+# Helper function to parse proposing party field
+def parse_proposing_party_list(proposing_party_val):
+    """Parse proposal_proposing_party field as a list of parties."""
+    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
+        return []
+    
+    try:
+        # Convert to string first
+        proposing_party_str = str(proposing_party_val)
+        
+        # Check if it's a JSON array string
+        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
+            party_list = json.loads(proposing_party_str.replace("'", '"'))
+            if isinstance(party_list, list):
+                return [str(party).strip() for party in party_list if str(party).strip()]
+        
+        # If it's a simple string, treat as single party
+        return [proposing_party_str.strip()]
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: treat as single party
+        return [str(proposing_party_val).strip()]
 
 # Category mapping for display
 CATEGORY_MAPPING = {

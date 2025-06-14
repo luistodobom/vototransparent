@@ -6,6 +6,28 @@ import re # For extracting BID
 from datetime import datetime
 from ast import literal_eval
 
+# --- Helper Functions ---
+def parse_proposing_party_list(proposing_party_val):
+    """Parse proposal_proposing_party field as a list of parties."""
+    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
+        return []
+    
+    try:
+        # Convert to string first
+        proposing_party_str = str(proposing_party_val)
+        
+        # Check if it's a JSON array string
+        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
+            party_list = json.loads(proposing_party_str.replace("'", '"'))
+            if isinstance(party_list, list):
+                return [str(party).strip() for party in party_list if str(party).strip()]
+        
+        # If it's a simple string, treat as single party
+        return [proposing_party_str.strip()]
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: treat as single party
+        return [str(proposing_party_val).strip()]
+
 # --- Constants for pagination ---
 INITIAL_DISPLAY_COUNT = 20
 LOAD_MORE_COUNT = 20
@@ -155,18 +177,14 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     # print(f"Error parsing proposal_category_raw: {e}")  # Debugging line
                     proposal_category_list = []
 
-            # Parse proposal_proposing_party as list
-            try:
-                if isinstance(proposal_proposing_party_val, str) and proposal_proposing_party_val.startswith('['):
-                    proposal_proposing_party_list = json.loads(proposal_proposing_party_val.replace("'", '"'))
-                    if isinstance(proposal_proposing_party_list, list) and proposal_proposing_party_list:
-                        proposal_proposing_party_val = proposal_proposing_party_list[0]  # Take first party for display
-                    else:
-                        proposal_proposing_party_val = 'N/A'
-                else:
-                    proposal_proposing_party_val = str(proposal_proposing_party_val)
-            except:
-                proposal_proposing_party_val = 'N/A'
+            # Parse proposal_proposing_party using helper function
+            proposal_proposing_party_list = parse_proposing_party_list(proposal_proposing_party_val)
+            
+            # Create display string for proposing party
+            if proposal_proposing_party_list:
+                proposal_proposing_party_display = ', '.join(proposal_proposing_party_list)
+            else:
+                proposal_proposing_party_display = 'N/A'
 
             # Extract parties and votes information from voting_details_json
             voting_details_raw = row.get('voting_details_json', '')
@@ -238,7 +256,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                         'session_date': session_date_val,
                         'proposal_category_list': proposal_category_list,
                         'proposal_short_title': proposal_short_title_val,
-                        'proposal_proposing_party': proposal_proposing_party_val,
+                        'proposal_proposing_party': proposal_proposing_party_display,
+                        'proposal_proposing_party_list': proposal_proposing_party_list,
                         'proposal_approval_status': proposal_approval_status_raw,
                     })
             else:
@@ -255,7 +274,8 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                     'session_date': session_date_val,
                     'proposal_category_list': proposal_category_list,
                     'proposal_short_title': proposal_short_title_val,
-                    'proposal_proposing_party': proposal_proposing_party_val,
+                    'proposal_proposing_party': proposal_proposing_party_display,
+                    'proposal_proposing_party_list': proposal_proposing_party_list,
                     'proposal_approval_status': proposal_approval_status_raw,
                 })
         
@@ -273,7 +293,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
             'issue_type', 'party', 'votes_favor', 'votes_against', 'votes_abstention', 'votes_not_voted',
             'authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial',
             'proposal_category_list',
-            'proposal_short_title', 'proposal_proposing_party', 'proposal_approval_status' # Added new columns
+            'proposal_short_title', 'proposal_proposing_party', 'proposal_proposing_party_list', 'proposal_approval_status' # Added new columns
         ]
         for col in expected_cols:
             if col not in df.columns:
@@ -282,6 +302,7 @@ def load_data(csv_path="data/parliament_data.csv"): # Adjusted default path for 
                 elif col == 'proposal_category_list': df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x) # Adjusted for apply
                 elif col == 'proposal_short_title': df[col] = 'N/A'
                 elif col == 'proposal_proposing_party': df[col] = 'N/A'
+                elif col == 'proposal_proposing_party_list': df[col] = df[col].apply(lambda x: [] if pd.isna(x) else x)
                 elif col == 'proposal_approval_status': df[col] = pd.NA
                 elif col in ['authors_json_str', 'proposal_summary_analysis', 'proposal_summary_fiscal_impact', 'proposal_summary_colloquial']:
                     df[col] = '' if col != 'authors_json_str' else '[]'
@@ -358,9 +379,9 @@ with col_category:
         options=categories,
         default=st.session_state.selected_categories,
         label_visibility="collapsed",
-        on_change=reset_displayed_topics_count # Reset count on filter change
+        on_change=reset_displayed_topics_count, # Reset count on filter change
+        key="categories_multiselect"
     )
-    st.session_state.selected_categories = selected_categories
 
 with col_approval_status:
     st.markdown("#### Aprovação:")
@@ -370,14 +391,22 @@ with col_approval_status:
         "Rejeitado": 0.0,
         "Desconhecido": "unknown"
     }
+    
+    # Find current index, defaulting to 0 if not found
+    try:
+        current_approval_index = list(approval_status_options.keys()).index(st.session_state.selected_approval_label)
+    except ValueError:
+        current_approval_index = 0
+        st.session_state.selected_approval_label = "Todos"
+    
     selected_approval_label = st.selectbox(
         label="Filtro Estado Aprovação",
         options=list(approval_status_options.keys()),
-        index=list(approval_status_options.keys()).index(st.session_state.selected_approval_label),
+        index=current_approval_index,
         label_visibility="collapsed",
-        on_change=reset_displayed_topics_count # Reset count on filter change
+        on_change=reset_displayed_topics_count, # Reset count on filter change
+        key="approval_selectbox"
     )
-    st.session_state.selected_approval_label = selected_approval_label
     selected_approval_filter_val = approval_status_options[selected_approval_label]
 
 # Second row of filters
@@ -386,39 +415,53 @@ col_proposing_party, col_government = st.columns([2, 2])
 with col_proposing_party:
     st.markdown("#### Proponente:")
     available_proposing_parties = []
-    if not data_df.empty and 'proposal_proposing_party' in data_df.columns:
-        # Ensure 'N/A' and actual party names are handled correctly for sorting if needed
-        unique_parties = data_df['proposal_proposing_party'].dropna().unique()
-        available_proposing_parties = sorted([party for party in unique_parties if party != 'N/A'])
-        if 'N/A' in unique_parties: # Add 'N/A' at the end or handle as per preference
-            available_proposing_parties.append('N/A')
+    if not data_df.empty and 'proposal_proposing_party_list' in data_df.columns:
+        # Extract individual parties from all lists
+        all_parties = set()
+        for party_list in data_df['proposal_proposing_party_list'].dropna():
+            if isinstance(party_list, list):
+                all_parties.update(party_list)
+        available_proposing_parties = sorted([party for party in all_parties if party and party != 'N/A'])
+        if not available_proposing_parties:  # Fallback to display strings if lists are empty
+            unique_parties = data_df['proposal_proposing_party'].dropna().unique()
+            available_proposing_parties = sorted([party for party in unique_parties if party != 'N/A'])
             
     proposing_party_options = ["Todos"] + available_proposing_parties
     
-    # Ensure current session state value is valid, otherwise default to "Todos" or first option
-    current_proposing_party_selection = st.session_state.selected_proposing_party
-    if current_proposing_party_selection not in proposing_party_options:
-        current_proposing_party_selection = "Todos" # Default if not found
+    # Find current index, defaulting to 0 if not found
+    try:
+        current_proposing_party_index = proposing_party_options.index(st.session_state.selected_proposing_party)
+    except ValueError:
+        current_proposing_party_index = 0
+        st.session_state.selected_proposing_party = "Todos"
 
     selected_proposing_party = st.selectbox(
         label="Filtro Proponente",
         options=proposing_party_options,
-        index=proposing_party_options.index(current_proposing_party_selection),
+        index=current_proposing_party_index,
         label_visibility="collapsed",
-        on_change=reset_displayed_topics_count # Reset count on filter change
+        on_change=reset_displayed_topics_count, # Reset count on filter change
+        key="proposing_party_selectbox"
     )
-    st.session_state.selected_proposing_party = selected_proposing_party
 
 with col_government:
     st.markdown("#### Governo:")
+    
+    # Find current index, defaulting to 0 if not found
+    try:
+        current_government_index = list(GOVERNMENT_PERIODS.keys()).index(st.session_state.selected_government)
+    except ValueError:
+        current_government_index = 0
+        st.session_state.selected_government = "Todos"
+    
     selected_government = st.selectbox(
         label="Filtro por Período de Governo",
         options=list(GOVERNMENT_PERIODS.keys()),
-        index=list(GOVERNMENT_PERIODS.keys()).index(st.session_state.selected_government),
+        index=current_government_index,
         label_visibility="collapsed",
-        on_change=reset_displayed_topics_count # Reset count on filter change
+        on_change=reset_displayed_topics_count, # Reset count on filter change
+        key="government_selectbox"
     )
-    st.session_state.selected_government = selected_government
 
 st.markdown("---")
 
@@ -451,7 +494,11 @@ if not data_df.empty:
     
     # Apply proposing party filter
     if selected_proposing_party != "Todos":
-        filtered_topics_full = filtered_topics_full[filtered_topics_full['proposal_proposing_party'] == selected_proposing_party]
+        filtered_topics_full = filtered_topics_full[
+            filtered_topics_full['proposal_proposing_party_list'].apply(
+                lambda party_list: isinstance(party_list, list) and selected_proposing_party in party_list
+            )
+        ]
 
     # Apply government period filter
     if selected_government != "Todos":
@@ -603,3 +650,25 @@ else:
 
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
 st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
+
+# Helper function to parse proposing party field
+def parse_proposing_party_list(proposing_party_val):
+    """Parse proposal_proposing_party field as a list of parties."""
+    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
+        return []
+    
+    try:
+        # Convert to string first
+        proposing_party_str = str(proposing_party_val)
+        
+        # Check if it's a JSON array string
+        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
+            party_list = json.loads(proposing_party_str.replace("'", '"'))
+            if isinstance(party_list, list):
+                return [str(party).strip() for party in party_list if str(party).strip()]
+        
+        # If it's a simple string, treat as single party
+        return [proposing_party_str.strip()]
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: treat as single party
+        return [str(proposing_party_val).strip()]
