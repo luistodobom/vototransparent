@@ -704,5 +704,9 @@ if not data_df.empty:
 else:
     st.warning("Não foi possível carregar os dados das votações. Verifique as mensagens de erro acima.")
 
+# --- Footer ---
+st.markdown("<div class='footer'>Desenvolvido com ❤️ por Luis Berenguer Todo-Bom<br>Dados extraídos de documentos oficiais da Assembleia da República e processados com Inteligência Artificial (dados de 2020 em diante).<br>A informação pode conter erros. <a href=https://github.com/luistodobom/vototransparente/issues>Reporte erros no Github.</a></div>", unsafe_allow_html=True)
+
+
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
 st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
