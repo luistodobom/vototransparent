@@ -483,21 +483,24 @@ if not data_df.empty:
         # Normalize search query
         normalized_search_query = normalize_text(search_query)
 
-        # Ensure 'description' and 'full_title' are strings for searching
+        # Ensure searchable fields are strings for searching
         search_df_unique_issues['description'] = search_df_unique_issues['description'].astype(str)
         search_df_unique_issues['full_title'] = search_df_unique_issues['full_title'].astype(str)
+        search_df_unique_issues['proposal_short_title'] = search_df_unique_issues['proposal_short_title'].astype(str)
         # 'issue_identifier' is already string from load_data
 
         # Apply normalization to searchable columns
         # Create temporary columns for normalized search
         search_df_unique_issues['normalized_full_title'] = search_df_unique_issues['full_title'].apply(normalize_text)
         search_df_unique_issues['normalized_description'] = search_df_unique_issues['description'].apply(normalize_text)
+        search_df_unique_issues['normalized_proposal_short_title'] = search_df_unique_issues['proposal_short_title'].apply(normalize_text)
         search_df_unique_issues['normalized_issue_identifier'] = search_df_unique_issues['issue_identifier'].astype(str).apply(normalize_text)
 
 
         results = search_df_unique_issues[
             search_df_unique_issues['normalized_full_title'].str.contains(normalized_search_query, case=False, na=False) |
             search_df_unique_issues['normalized_description'].str.contains(normalized_search_query, case=False, na=False) |
+            search_df_unique_issues['normalized_proposal_short_title'].str.contains(normalized_search_query, case=False, na=False) |
             search_df_unique_issues['normalized_issue_identifier'].str.contains(normalized_search_query, case=False, na=False)
         ]
 
