@@ -72,6 +72,28 @@ st.markdown("""
         display: none; /* Hide the label above search input if placeholder is enough */
     }
 
+    /* Search button styling */
+    button[data-testid="baseButton-secondary"][aria-label="Pesquisar"],
+    button[key="search_button"] {
+        border-radius: 50% !important;
+        border: 1px solid #007bff !important;
+        background-color: #007bff !important;
+        color: white !important;
+        padding: 0.5em !important;
+        height: 2.5rem !important;
+        width: 2.5rem !important;
+        font-size: 1em !important;
+        min-width: 2.5rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    button[data-testid="baseButton-secondary"][aria-label="Pesquisar"]:hover,
+    button[key="search_button"]:hover {
+        background-color: #0056b3 !important;
+        border-color: #0056b3 !important;
+    }
+
     /* Button styling for search results */
     div[data-testid="stButton"] > button {
         border-radius: 8px;
@@ -391,18 +413,25 @@ if not data_df.empty:
         st.session_state.last_page = 'home'
 
     # --- Search Functionality ---
-    # Centered "Browse All Votes" link/button
-    search_query = st.text_input(
-        "Pesquisar propostas", # Add a descriptive label
-        placeholder="Pesquisar por palavra-chave...",
-        value=st.session_state.search_query,  # Restore previous search query
-        key="search_input",
-        label_visibility="collapsed" # Add this if you want to hide the label "Pesquisar propostas",
-    )
+    # Create columns for search input and button
+    search_col1, search_col2 = st.columns([6, 1])
+    
+    with search_col1:
+        search_query = st.text_input(
+            "Pesquisar propostas", # Add a descriptive label
+            placeholder="Pesquisar por palavra-chave...",
+            value=st.session_state.search_query,  # Restore previous search query
+            key="search_input",
+            label_visibility="collapsed" # Add this if you want to hide the label "Pesquisar propostas",
+        )
+    
+    with search_col2:
+        search_button_clicked = st.button("🔍", key="search_button", help="Pesquisar")
 
-    # Update session state when search query changes
-    if search_query != st.session_state.search_query:
+    # Update session state when search query changes or search button is clicked
+    if search_query != st.session_state.search_query or search_button_clicked:
         st.session_state.search_query = search_query
+        st.rerun()
 
     if search_query:
         # Perform a case-insensitive search across relevant fields
