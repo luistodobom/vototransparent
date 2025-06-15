@@ -217,10 +217,19 @@ def summarize_proposal_text(proposal_document_path):
 # --- Main Pipeline Orchestrator ---
 
 
-def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, dataframe_path=None):
+def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, dataframe_path=None, session_start_date=None):
     if not GEMINI_API_KEY:
         print("Critical Error: GEMINI_API_KEY is not set. The pipeline cannot run LLM-dependent stages.")
         return
+
+    # Validate session_start_date format if provided
+    if session_start_date:
+        try:
+            datetime.strptime(session_start_date, '%Y-%m-%d')
+            print(f"Using session start date filter: {session_start_date}")
+        except ValueError:
+            print(f"Error: Invalid session_start_date format '{session_start_date}'. Expected format: YYYY-MM-DD")
+            return
 
     init_directories()
     df = load_or_initialize_dataframe(dataframe_path)
@@ -243,15 +252,20 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
             # Iterate through the DataFrame in reverse order to get the last appearances
             for date in reversed(df['session_date'].dropna().tolist()):
                 if date not in seen_dates:
-                    dates_in_file_order.append(date)
-                    seen_dates.add(date)
-                    if len(dates_in_file_order) >= NUM_THREADS:
-                        break
+                    # Apply session_start_date filter if provided
+                    if session_start_date is None or str(date) >= session_start_date:
+                        dates_in_file_order.append(date)
+                        seen_dates.add(date)
+                        if len(dates_in_file_order) >= NUM_THREADS:
+                            break
             
             dates_to_reprocess = set(str(date) for date in dates_in_file_order)
             
             print(f"Found {len(processed_dates_in_df)} unique processed session dates in CSV.")
-            print(f"Will reprocess last {len(dates_to_reprocess)} unique dates from end of CSV for multithreaded safety: {sorted(dates_to_reprocess)}")
+            if session_start_date:
+                print(f"Will reprocess last {len(dates_to_reprocess)} unique dates from end of CSV (filtered by session start date {session_start_date}) for multithreaded safety: {sorted(dates_to_reprocess)}")
+            else:
+                print(f"Will reprocess last {len(dates_to_reprocess)} unique dates from end of CSV for multithreaded safety: {sorted(dates_to_reprocess)}")
         else:
             print("No valid session dates found in CSV.")
 
@@ -266,6 +280,22 @@ def run_pipeline(start_year=None, end_year=None, max_sessions_to_process=None, d
         start_year=_start_year, end_year=_end_year)
     print(
         f"Found {len(all_session_pdf_infos_from_web)} potential session PDF links from web.")
+
+    # Apply session_start_date filter if provided
+    if session_start_date:
+        print(f"Applying session start date filter: {session_start_date}")
+        filtered_sessions = []
+        for info in all_session_pdf_infos_from_web:
+            session_date_from_web = info.get('date')
+            if pd.notna(session_date_from_web) and str(session_date_from_web) >= session_start_date:
+                filtered_sessions.append(info)
+            elif pd.isna(session_date_from_web):
+                # Keep sessions with missing dates to be safe
+                filtered_sessions.append(info)
+                print(f"Warning: Session with no date kept despite filter: {info['url']}")
+        
+        print(f"After applying session start date filter: {len(filtered_sessions)} sessions remain (filtered out {len(all_session_pdf_infos_from_web) - len(filtered_sessions)} sessions before {session_start_date})")
+        all_session_pdf_infos_from_web = filtered_sessions
 
     TERMINAL_SUCCESS_STATUSES = {
         'Success',
@@ -871,12 +901,16 @@ if __name__ == "__main__":
     parser.add_argument(
         '--year', type=int, help="Start year for scraping (default: current year - 5)", default=YEAR)
     parser.add_argument(
-        '--year_end', type=int, help="End year for scraping (default: 2020)", default=2020
+        '--year-end', type=int, help="End year for scraping (default: 2020)", default=2020
+    )
+    parser.add_argument(
+        '--session-start-date', '-s', type=str, help="Only process sessions on or after this date (YYYY-MM-DD format). Filters both web sessions and reprocessing dates from CSV.", default=None
     )
 
     args = parser.parse_args()
     year_to_use = args.year
     year_to_end = args.year_end
+    session_start_date = args.session_start_date
     dataframe_path_to_use = f"data/parliament_data_{year_to_use}.csv"
 
-    run_pipeline(start_year=year_to_use, end_year=year_to_end, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use)
+    run_pipeline(start_year=year_to_use, end_year=year_to_end, max_sessions_to_process=None, dataframe_path=dataframe_path_to_use, session_start_date=session_start_date)
