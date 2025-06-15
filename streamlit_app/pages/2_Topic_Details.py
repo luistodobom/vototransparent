@@ -10,28 +10,9 @@ from matplotlib.patches import Wedge # Added
 import matplotlib.colors as mcolors # Added
 import matplotlib.patches as mpatches # Added
 import matplotlib.patheffects as path_effects 
+from party_matching import parse_proposing_party_list 
 
 # --- Helper Functions ---
-def parse_proposing_party_list(proposing_party_val):
-    """Parse proposal_proposing_party field as a list of parties."""
-    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
-        return []
-    
-    try:
-        # Convert to string first
-        proposing_party_str = str(proposing_party_val)
-        
-        # Check if it's a JSON array string
-        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
-            party_list = json.loads(proposing_party_str.replace("'", '"'))
-            if isinstance(party_list, list):
-                return [str(party).strip() for party in party_list if str(party).strip()]
-        
-        # If it's a simple string, treat as single party
-        return [proposing_party_str.strip()]
-    except (json.JSONDecodeError, ValueError):
-        # Fallback: treat as single party
-        return [str(proposing_party_val).strip()]
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -511,28 +492,6 @@ def load_data(csv_path="data/parliament_data.csv"):
 
 
 data_df = load_data() 
-
-# Helper function to parse proposing party field
-def parse_proposing_party_list(proposing_party_val):
-    """Parse proposal_proposing_party field as a list of parties."""
-    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
-        return []
-    
-    try:
-        # Convert to string first
-        proposing_party_str = str(proposing_party_val)
-        
-        # Check if it's a JSON array string
-        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
-            party_list = json.loads(proposing_party_str.replace("'", '"'))
-            if isinstance(party_list, list):
-                return [str(party).strip() for party in party_list if str(party).strip()]
-        
-        # If it's a simple string, treat as single party
-        return [proposing_party_str.strip()]
-    except (json.JSONDecodeError, ValueError):
-        # Fallback: treat as single party
-        return [str(proposing_party_val).strip()]
 
 # Category mapping for display
 CATEGORY_MAPPING = {

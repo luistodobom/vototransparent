@@ -5,28 +5,7 @@ import json
 import re # For extracting BID
 from datetime import datetime
 from ast import literal_eval
-
-# --- Helper Functions ---
-def parse_proposing_party_list(proposing_party_val):
-    """Parse proposal_proposing_party field as a list of parties."""
-    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
-        return []
-    
-    try:
-        # Convert to string first
-        proposing_party_str = str(proposing_party_val)
-        
-        # Check if it's a JSON array string
-        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
-            party_list = json.loads(proposing_party_str.replace("'", '"'))
-            if isinstance(party_list, list):
-                return [str(party).strip() for party in party_list if str(party).strip()]
-        
-        # If it's a simple string, treat as single party
-        return [proposing_party_str.strip()]
-    except (json.JSONDecodeError, ValueError):
-        # Fallback: treat as single party
-        return [str(proposing_party_val).strip()]
+from party_matching import parse_proposing_party_list
 
 # --- Constants for pagination ---
 INITIAL_DISPLAY_COUNT = 20
@@ -650,25 +629,3 @@ else:
 
 st.sidebar.page_link("streamlit_app.py", label="Página Inicial", icon="🏠")
 st.sidebar.page_link("pages/1_Browse_Topics.py", label="Todas as Votações", icon="📜")
-
-# Helper function to parse proposing party field
-def parse_proposing_party_list(proposing_party_val):
-    """Parse proposal_proposing_party field as a list of parties."""
-    if pd.isna(proposing_party_val) or str(proposing_party_val).lower() in ['nan', '', 'none', 'n/a']:
-        return []
-    
-    try:
-        # Convert to string first
-        proposing_party_str = str(proposing_party_val)
-        
-        # Check if it's a JSON array string
-        if proposing_party_str.startswith('[') and proposing_party_str.endswith(']'):
-            party_list = json.loads(proposing_party_str.replace("'", '"'))
-            if isinstance(party_list, list):
-                return [str(party).strip() for party in party_list if str(party).strip()]
-        
-        # If it's a simple string, treat as single party
-        return [proposing_party_str.strip()]
-    except (json.JSONDecodeError, ValueError):
-        # Fallback: treat as single party
-        return [str(proposing_party_val).strip()]
