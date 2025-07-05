@@ -499,7 +499,7 @@ if not data_df.empty:
 
         results = search_df_unique_issues[
             search_df_unique_issues['normalized_full_title'].str.contains(normalized_search_query, case=False, na=False) |
-            search_df_unique_issues['normalized_description'].str.contains(normalized_search_query, case=False, na=False) |
+            # search_df_unique_issues['normalized_description'].str.contains(normalized_search_query, case=False, na=False) |
             search_df_unique_issues['normalized_proposal_short_title'].str.contains(normalized_search_query, case=False, na=False) |
             search_df_unique_issues['normalized_issue_identifier'].str.contains(normalized_search_query, case=False, na=False)
         ]
